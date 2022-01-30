@@ -54,10 +54,7 @@ func (s *SLIITSyncable) Sync() error {
 		return err
 	}
 
-	ok, err := assertLogin(doc, s.user.Username)
-	if err != nil {
-		return err
-	}
+	ok := assertLogin(doc, s.user.Username)
 
 	if !ok {
 		return ErrLogin
@@ -224,11 +221,7 @@ func (s *SLIITSyncable) Login() error {
 		return qerr
 	}
 
-	logged, aerr := assertLogin(doc, s.user.Username)
-
-	if aerr != nil {
-		return aerr
-	}
+	logged := assertLogin(doc, s.user.Username)
 
 	if !logged {
 		return ErrLogin

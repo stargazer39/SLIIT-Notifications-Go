@@ -159,14 +159,10 @@ func (s *SLIITBot) generateSyncables(users []SLIITUser) ([]SLIITSyncable, error)
 			continue
 		}
 
-		logged, aerr := assertLogin(doc, currentUser.Username)
-
-		if qerr != aerr {
-			log.Println(qerr)
-			continue
-		}
+		logged := assertLogin(doc, currentUser.Username)
 
 		if !logged {
+			log.Printf("Loggin faild for user - %s\n", currentUser.Username)
 			continue
 		}
 
@@ -232,21 +228,12 @@ func (s *SLIITBot) Stop() {
 	s.exit_chan <- true
 }
 
-func assertLogin(doc *goquery.Document, username string) (bool, error) {
+func assertLogin(doc *goquery.Document, username string) bool {
 	selec := doc.Find("span.usertext")
-
-	// if selec == nil {
-	// 	return false, errors.New("Element not found...")
-	// }
-
-	usertext, serr := selec.Html()
-
-	if serr != nil {
-		return false, serr
-	}
+	usertext := selec.Text()
 
 	// log.Printf("Logged in as %s\n", usertext)
 	logged := strings.Contains(strings.ToLower(usertext), strings.ToLower(username))
 
-	return logged, nil
+	return logged
 }
