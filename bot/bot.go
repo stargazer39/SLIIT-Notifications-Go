@@ -84,7 +84,7 @@ out:
 
 			go func() {
 				if err := s.Sync(); err != nil {
-					if err == LoginErr {
+					if err == ErrLogin {
 						rErr := s.Login()
 						if rErr != nil {
 							log.Println("Re Login faild.", rErr)

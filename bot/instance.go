@@ -33,7 +33,7 @@ type Section struct {
 	Section string `bson:"s,omitempty" json:"s,omitempty"`
 }
 
-var LoginErr = errors.New("login error")
+var ErrLogin = errors.New("login error")
 
 func NewSLIITSyncable(title string, user *SLIITUser, site string, client *http.Client, db *mongo.Database, id primitive.ObjectID) *SLIITSyncable {
 	return &SLIITSyncable{
@@ -60,7 +60,7 @@ func (s *SLIITSyncable) Sync() error {
 	}
 
 	if !ok {
-		return LoginErr
+		return ErrLogin
 	}
 	// os.WriteFile(fmt.Sprintf(".cache/%s.txt", u), []byte(doc.Text()), 0644)
 	// Get from database
@@ -219,7 +219,7 @@ func (s *SLIITSyncable) Login() error {
 	}
 
 	if !logged {
-		return LoginErr
+		return ErrLogin
 	}
 	return nil
 }
