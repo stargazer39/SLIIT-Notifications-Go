@@ -77,11 +77,18 @@ func (s *SLIITSyncable) Sync() error {
 			var sections []Section
 
 			doc.Find(".section.main").Each(func(i int, sect *goquery.Selection) {
+				sect_name := sect.AttrOr("id", "unknown")
+
+				if sect_name == "unknown" {
+					return
+				}
+
 				t_hash := sha256.New()
 				t_hash.Write([]byte(sect.Text()))
+
 				sections = append(sections, Section{
 					Hash:    fmt.Sprintf("%x", t_hash.Sum(nil)),
-					Section: sect.AttrOr("id", "unknown"),
+					Section: sect_name,
 				})
 			})
 
@@ -113,15 +120,20 @@ func (s *SLIITSyncable) Sync() error {
 	}
 
 	doc.Find(".section.main").Each(func(i int, sect *goquery.Selection) {
+		sect_name := sect.AttrOr("id", "unknown")
+
+		if sect_name == "unknown" {
+			return
+		}
+
 		t_hash := sha256.New()
 		t_hash.Write([]byte(sect.Text()))
 
 		h := fmt.Sprintf("%x", t_hash.Sum(nil))
-		id := sect.AttrOr("id", "unknown")
 
-		if lHash, ok := section_map[id]; ok {
+		if lHash, ok := section_map[sect_name]; ok {
 			if strings.Compare(h, lHash) != 0 {
-				log.Printf("%s from %s Changed.", s.id, id)
+				log.Printf("%s from %s Changed.", s.id, sect_name)
 			}
 		}
 	})

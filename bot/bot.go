@@ -86,12 +86,14 @@ out:
 				if err := s.Sync(); err != nil {
 					if err == ErrLogin {
 						rErr := s.Login()
-						if rErr != nil {
-							log.Println("Re Login faild.", rErr)
+						if rErr == ErrLogin {
+							log.Println("ReLogin faild.", rErr)
 							return
 						}
 
-						log.Println(err)
+						if rErr != nil {
+							log.Println(rErr)
+						}
 						return
 					}
 
@@ -243,7 +245,7 @@ func assertLogin(doc *goquery.Document, username string) (bool, error) {
 		return false, serr
 	}
 
-	log.Printf("Logged in as %s\n", usertext)
+	// log.Printf("Logged in as %s\n", usertext)
 	logged := strings.Contains(strings.ToLower(usertext), strings.ToLower(username))
 
 	return logged, nil
