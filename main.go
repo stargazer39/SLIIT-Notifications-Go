@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"stargazer/SLIIT-Notifications/bot"
 	"stargazer/SLIIT-Notifications/helpers"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -55,12 +56,19 @@ func main() {
 
 	log.Println(databases)
 
-	db := client.Database("SLIITNotificationsGo2")
+	db := client.Database(os.Getenv("DATABASE"))
+
+	interval, iErr := strconv.Atoi(os.Getenv("INTERVAL"))
+
+	if iErr != nil {
+		interval = 5
+	}
+
 	bot_context, cancel := context.WithCancel(context.Background())
 
 	defer cancel()
 
-	sliit_bot := bot.NewBot(bot_context, db)
+	sliit_bot := bot.NewBot(bot_context, db, time.Second*time.Duration(interval))
 
 	// Changed
 	file, fErr := os.Create("./.cache/log.txt")

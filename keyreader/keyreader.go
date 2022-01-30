@@ -27,9 +27,10 @@ func (k *KeyReader) Get(s string) string {
 	if !err {
 		return ""
 	}
+
 	t := strings.Split(v.Tag.Get(k.key), ",")
 
-	if len(t) != 0 {
+	if len(t) == 0 {
 		return ""
 	}
 

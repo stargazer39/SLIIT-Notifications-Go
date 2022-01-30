@@ -21,6 +21,7 @@ type SLIITBot struct {
 	users            []SLIITUser
 	exit_chan        chan bool
 	change_listeners []func(s *SLIITHistory)
+	interval         time.Duration
 }
 
 type SLIITUser struct {
@@ -44,7 +45,7 @@ type SLIITHistory struct {
 	HTML     string             `bson:"html,omitempty" json:"html,omitempty"`
 }
 
-func NewBot(ctx context.Context, db *mongo.Database) *SLIITBot {
+func NewBot(ctx context.Context, db *mongo.Database, interval time.Duration) *SLIITBot {
 	// db.Collection("test").InsertOne(ctx, bson.M{
 	// 	"testdoc": "hello_world",
 	// })
@@ -53,6 +54,7 @@ func NewBot(ctx context.Context, db *mongo.Database) *SLIITBot {
 		db:        db,
 		users:     []SLIITUser{},
 		exit_chan: make(chan bool),
+		interval:  interval,
 	}
 }
 
@@ -116,7 +118,7 @@ out:
 		wg.Wait()
 		log.Println(time.Since(t1))
 
-		sleeper := time.NewTimer(time.Second * 5)
+		sleeper := time.NewTimer(s.interval)
 		//close(done)
 		select {
 		case <-s.exit_chan:
