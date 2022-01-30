@@ -73,10 +73,8 @@ func (s *SLIITBot) Start() error {
 	done := make(chan bool, 8)
 
 out:
-	for j := 0; j < 100; j++ {
+	for {
 		var wg sync.WaitGroup
-
-		sleeper := time.NewTimer(time.Second * 5)
 		t1 := time.Now()
 
 		for i := 0; i < length; i++ {
@@ -106,7 +104,8 @@ out:
 
 		wg.Wait()
 		log.Println(time.Since(t1))
-		time.Sleep(time.Second * 5)
+
+		sleeper := time.NewTimer(time.Second * 5)
 		//close(done)
 		select {
 		case <-s.exit_chan:
