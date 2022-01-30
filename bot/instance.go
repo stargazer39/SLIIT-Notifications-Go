@@ -46,25 +46,25 @@ func NewSLIITSyncable(title string, user *SLIITUser, site string, client *http.C
 	}
 }
 
-func (s *SLIITSyncable) Sync() error {
+func (s *SLIITSyncable) Sync() (*SLIITHistory, error) {
 	log.Println(s.site)
 	doc, err := helpers.DoGetGoQuery(s.client, s.site)
 
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	ok := assertLogin(doc, s.user.Username)
 
 	if !ok {
-		return ErrLogin
+		return nil, ErrLogin
 	}
 	// os.WriteFile(fmt.Sprintf(".cache/%s.txt", u), []byte(doc.Text()), 0644)
 	// Get from database
 	var old_history SLIITHistory
 
 	findOpts := options.FindOne()
-	findOpts.SetSort(bson.M{"_id": 1})
+	findOpts.SetSort(bson.M{"_id": -1})
 
 	res := s.db.Collection("history").FindOne(context.TODO(), SLIITHistory{SiteID: s.id}, findOpts)
 
@@ -96,24 +96,25 @@ func (s *SLIITSyncable) Sync() error {
 			}
 
 			if _, iErr := s.db.Collection("history").InsertOne(context.TODO(), new_history); iErr != nil {
-				return iErr
+				return nil, iErr
 			}
 			log.Println("Completed")
 			log.Println(s.id)
-			return nil
+			return nil, nil
 		} else {
-			return err
+			return nil, err
 		}
 	}
 
 	// Compare the stuff
 	log.Printf("Comparing pages %s\n", s.title)
 
-	section_map := make(map[string]string)
-	old_sections := old_history.Sections
+	section_map := make(map[string]*Section)
+	sections := old_history.Sections
+	changed_sections := []string{}
 
-	for i := 0; i < len(old_sections); i++ {
-		section_map[old_sections[i].Section] = old_sections[i].Hash
+	for i := 0; i < len(sections); i++ {
+		section_map[sections[i].Section] = &sections[i]
 	}
 
 	doc.Find(".section.main").Each(func(i int, sect *goquery.Selection) {
@@ -128,12 +129,33 @@ func (s *SLIITSyncable) Sync() error {
 
 		h := fmt.Sprintf("%x", t_hash.Sum(nil))
 
-		if lHash, ok := section_map[sect_name]; ok {
-			if strings.Compare(h, lHash) != 0 {
+		if old, ok := section_map[sect_name]; ok {
+			if strings.Compare(h, old.Hash) != 0 {
 				log.Printf("%s from %s Changed.", s.id, sect_name)
+
+				changed_sections = append(changed_sections, sect_name)
+				old.Hash = h
 			}
 		}
 	})
+
+	if len(changed_sections) > 0 {
+		new_history := SLIITHistory{
+			ID:       primitive.NewObjectID(),
+			SiteID:   s.id,
+			Sections: sections,
+		}
+
+		if _, iErr := s.db.Collection("history").InsertOne(context.TODO(), new_history); iErr != nil {
+			return nil, iErr
+		}
+
+		log.Println("Completed")
+		return &new_history, nil
+	}
+
+	return nil, nil
+
 	// fileName := fmt.Sprintf(".cache/%s.json", url.PathEscape(s.title))
 
 	/* if _, err := os.Stat(fileName); err == nil {
@@ -197,7 +219,6 @@ func (s *SLIITSyncable) Sync() error {
 	}
 
 	f.Write(jBytes) */
-	return nil
 }
 
 func (s *SLIITSyncable) Login() error {

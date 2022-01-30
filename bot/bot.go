@@ -17,9 +17,10 @@ import (
 )
 
 type SLIITBot struct {
-	db        *mongo.Database
-	users     []SLIITUser
-	exit_chan chan bool
+	db               *mongo.Database
+	users            []SLIITUser
+	exit_chan        chan bool
+	change_listeners []func(s *SLIITHistory)
 }
 
 type SLIITUser struct {
@@ -78,14 +79,16 @@ out:
 		t1 := time.Now()
 
 		for i := 0; i < length; i++ {
-			s := &syncables[i]
+			syn := &syncables[i]
 			done <- true
 			wg.Add(1)
 
 			go func() {
-				if err := s.Sync(); err != nil {
-					if err == ErrLogin {
-						rErr := s.Login()
+				history, sErr := syn.Sync()
+
+				if sErr != nil {
+					if sErr == ErrLogin {
+						rErr := syn.Login()
 						if rErr == ErrLogin {
 							log.Println("ReLogin faild.", rErr)
 							return
@@ -96,8 +99,13 @@ out:
 						}
 						return
 					}
+					log.Println(sErr)
+				}
 
-					log.Println(err)
+				if history != nil {
+					for j := 0; j < len(s.change_listeners); j++ {
+						s.change_listeners[j](history)
+					}
 				}
 				wg.Done()
 				<-done
@@ -117,6 +125,10 @@ out:
 	}
 
 	return sErr
+}
+
+func (s *SLIITBot) RegisterChangeListener(h func(his *SLIITHistory)) {
+	s.change_listeners = append(s.change_listeners, h)
 }
 
 func (s *SLIITBot) generateSyncables(users []SLIITUser) ([]SLIITSyncable, error) {

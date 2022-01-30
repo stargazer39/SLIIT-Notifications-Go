@@ -53,11 +53,16 @@ func main() {
 
 	defer cancel()
 
-	bot := bot.NewBot(bot_context, db)
+	sliit_bot := bot.NewBot(bot_context, db)
 
-	go bot.Start()
+	// Changed
+	sliit_bot.RegisterChangeListener(func(h *bot.SLIITHistory) {
+		log.Println(h)
+	})
+
+	go sliit_bot.Start()
 
 	<-exit_event
 	log.Printf("Exiting boii")
-	bot.Stop()
+	sliit_bot.Stop()
 }
