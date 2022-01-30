@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"stargazer/SLIIT-Notifications/bot"
+	"stargazer/SLIIT-Notifications/helpers"
 	"syscall"
 	"time"
 
@@ -23,6 +25,11 @@ func main() {
 	// Handle exit
 	exit_event := make(chan os.Signal, 1)
 	signal.Notify(exit_event, os.Interrupt, syscall.SIGTERM)
+
+	// Create cache folders
+	if err := helpers.CreateFolders(); err != nil {
+		log.Panic(err)
+	}
 
 	mongo_uri := os.Getenv("MONGO_URI")
 
@@ -56,8 +63,17 @@ func main() {
 	sliit_bot := bot.NewBot(bot_context, db)
 
 	// Changed
+	file, fErr := os.Create("./.cache/log.txt")
+
+	if fErr != nil {
+		log.Panic(fErr)
+	}
+
+	defer file.Close()
+
 	sliit_bot.RegisterChangeListener(func(h *bot.SLIITHistory) {
 		log.Println(h)
+		file.Write([]byte(fmt.Sprintf("%s changed \n", h.SiteID)))
 	})
 
 	go sliit_bot.Start()

@@ -41,6 +41,7 @@ type SLIITHistory struct {
 	ID       primitive.ObjectID `bson:"_id,omitempty" json:"id,omitempty"`
 	SiteID   primitive.ObjectID `bson:"sid,omitempty" json:"sid,omitempty"`
 	Sections []Section          `bson:"sects,omitempty" json:"sects,omitempty"`
+	HTML     string             `bson:"html,omitempty" json:"html,omitempty"`
 }
 
 func NewBot(ctx context.Context, db *mongo.Database) *SLIITBot {

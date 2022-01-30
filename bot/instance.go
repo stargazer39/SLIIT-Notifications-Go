@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"stargazer/SLIIT-Notifications/helpers"
+	"stargazer/SLIIT-Notifications/keyreader"
 
 	"github.com/PuerkitoBio/goquery"
 	"go.mongodb.org/mongo-driver/bson"
@@ -59,12 +60,19 @@ func (s *SLIITSyncable) Sync() (*SLIITHistory, error) {
 	if !ok {
 		return nil, ErrLogin
 	}
-	// os.WriteFile(fmt.Sprintf(".cache/%s.txt", u), []byte(doc.Text()), 0644)
+
 	// Get from database
 	var old_history SLIITHistory
+	k := keyreader.NewReader(old_history, "bson")
 
 	findOpts := options.FindOne()
 	findOpts.SetSort(bson.M{"_id": -1})
+
+	findOpts.SetProjection(bson.M{
+		k.Get("ID"):       1,
+		k.Get("SiteID"):   1,
+		k.Get("Sections"): 1,
+	})
 
 	res := s.db.Collection("history").FindOne(context.TODO(), SLIITHistory{SiteID: s.id}, findOpts)
 
@@ -89,10 +97,23 @@ func (s *SLIITSyncable) Sync() (*SLIITHistory, error) {
 				})
 			})
 
+			source, souErr := doc.Html()
+
+			if souErr != nil {
+				return nil, souErr
+			}
+
+			compressed, cErr := helpers.CompressString(source)
+
+			if cErr != nil {
+				return nil, cErr
+			}
+
 			new_history := SLIITHistory{
 				ID:       primitive.NewObjectID(),
 				SiteID:   s.id,
 				Sections: sections,
+				HTML:     compressed,
 			}
 
 			if _, iErr := s.db.Collection("history").InsertOne(context.TODO(), new_history); iErr != nil {
@@ -105,7 +126,6 @@ func (s *SLIITSyncable) Sync() (*SLIITHistory, error) {
 			return nil, err
 		}
 	}
-
 	// Compare the stuff
 	log.Printf("Comparing pages %s\n", s.title)
 
@@ -140,10 +160,23 @@ func (s *SLIITSyncable) Sync() (*SLIITHistory, error) {
 	})
 
 	if len(changed_sections) > 0 {
+		source, souErr := doc.Html()
+
+		if souErr != nil {
+			return nil, souErr
+		}
+
+		compressed, cErr := helpers.CompressString(source)
+
+		if cErr != nil {
+			return nil, cErr
+		}
+
 		new_history := SLIITHistory{
 			ID:       primitive.NewObjectID(),
 			SiteID:   s.id,
 			Sections: sections,
+			HTML:     compressed,
 		}
 
 		if _, iErr := s.db.Collection("history").InsertOne(context.TODO(), new_history); iErr != nil {
