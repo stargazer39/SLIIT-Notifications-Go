@@ -241,11 +241,10 @@ func (s *SLIITBot) generateSyncables(users []SLIITUser) ([]SLIITSyncable, error)
 					mId = res.InsertedID.(primitive.ObjectID)
 				} else {
 					mId = site.ID
-				}
-
-				// If site disabled, return
-				if site.Disabled {
-					return
+					// If site disabled, return
+					if site.Disabled {
+						return
+					}
 				}
 				// New syncable
 				s := NewSLIITSyncable(name, currentUser, url, client, s.db, mId)
