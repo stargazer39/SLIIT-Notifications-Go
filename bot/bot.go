@@ -21,6 +21,8 @@ type SLIITBot struct {
 	db               *mongo.Database
 	users            []SLIITUser
 	exit_chan        chan bool
+	finish_chan      chan error
+	stop             bool
 	change_listeners []func(s *SLIITHistory)
 	interval         time.Duration
 }
@@ -50,20 +52,24 @@ type SLIITHistory struct {
 	LastID    primitive.ObjectID `bson:"last_id,omitempty" json:"last_id,omitempty"`
 }
 
-func NewBot(ctx context.Context, db *mongo.Database, interval time.Duration) *SLIITBot {
+func NewBot(db *mongo.Database, interval time.Duration) *SLIITBot {
 	// db.Collection("test").InsertOne(ctx, bson.M{
 	// 	"testdoc": "hello_world",
 	// })
 
 	return &SLIITBot{
-		db:        db,
-		users:     []SLIITUser{},
-		exit_chan: make(chan bool),
-		interval:  interval,
+		db:          db,
+		users:       []SLIITUser{},
+		interval:    interval,
+		exit_chan:   make(chan bool),
+		finish_chan: make(chan error),
+		stop:        false,
 	}
 }
 
-func (s *SLIITBot) Start() error {
+func (s *SLIITBot) Start(ctx context.Context) error {
+	defer close(s.finish_chan)
+
 	var users []SLIITUser
 
 	cur, curErr := s.db.Collection("user").Find(context.TODO(), bson.D{})
@@ -91,6 +97,10 @@ out:
 		t1 := time.Now()
 
 		for i := 0; i < length; i++ {
+			if s.stop {
+				break
+			}
+
 			syn := &syncables[i]
 			done <- true
 			wg.Add(1)
@@ -131,13 +141,15 @@ out:
 		sleeper := time.NewTimer(s.interval)
 		//close(done)
 		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-sleeper.C:
 		case <-s.exit_chan:
 			break out
-		case <-sleeper.C:
 		}
 	}
 
-	return sErr
+	return nil
 }
 
 func (s *SLIITBot) RegisterChangeListener(h func(his *SLIITHistory)) {
@@ -256,8 +268,16 @@ func (s *SLIITBot) generateSyncables(users []SLIITUser) ([]SLIITSyncable, error)
 	return syncable, nil
 }
 
-func (s *SLIITBot) Stop() {
-	s.exit_chan <- true
+func (s *SLIITBot) Stop(ctx context.Context) error {
+	close(s.exit_chan)
+
+	s.stop = true
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-s.finish_chan:
+		return nil
+	}
 }
 
 func assertLogin(doc *goquery.Document, username string) bool {

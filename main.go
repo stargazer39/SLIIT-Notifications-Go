@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"log"
@@ -10,11 +11,9 @@ import (
 	"stargazer/SLIIT-Notifications/bot"
 	"stargazer/SLIIT-Notifications/helpers"
 	"strconv"
-	"syscall"
 	"time"
 
 	"github.com/joho/godotenv"
-	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -25,8 +24,13 @@ func main() {
 	}
 
 	// Handle exit
-	exit_event := make(chan os.Signal, 1)
-	signal.Notify(exit_event, os.Interrupt, syscall.SIGTERM)
+	proc_exit_event := make(chan os.Signal, 1)
+	signal.Notify(proc_exit_event, os.Interrupt)
+
+	// Create Main context
+	main_ctx, cancel_main := context.WithCancel(context.Background())
+
+	defer cancel_main()
 
 	// Create cache folders
 	if err := helpers.CreateFolders(); err != nil {
@@ -36,10 +40,12 @@ func main() {
 	mongo_uri := os.Getenv("MONGO_URI")
 
 	client, cErr := mongo.NewClient(options.Client().ApplyURI(mongo_uri))
+
 	if cErr != nil {
 		log.Panicln(cErr)
 	}
 
+	// Set timeout context for connecting
 	ctx, cancel_ctx := context.WithTimeout(context.Background(), time.Second*10)
 
 	defer cancel_ctx()
@@ -50,14 +56,7 @@ func main() {
 		log.Panicln(conErr)
 	}
 
-	defer client.Disconnect(ctx)
-	databases, err := client.ListDatabaseNames(ctx, bson.M{})
-
-	if err != nil {
-		log.Panicln(err)
-	}
-
-	log.Println(databases)
+	defer client.Disconnect(main_ctx)
 
 	db := client.Database(os.Getenv("DATABASE"))
 
@@ -67,34 +66,105 @@ func main() {
 		interval = 5
 	}
 
-	bot_context, cancel := context.WithCancel(context.Background())
+	// Start API
+	a := api.NewInstance(db)
+	go func() {
+		if err := a.Start(main_ctx); err != nil {
+			log.Println(err)
+		}
+	}()
+
+	restart_event := make(chan bool)
+	stop_event := make(chan bool)
+	wait_to_stop := make(chan bool)
+
+	go func() {
+		for {
+			// Make bot's own context
+			bot_context, cancel_bot_context := context.WithCancel(main_ctx)
+
+			defer cancel_bot_context()
+
+			sliit_bot := bot.NewBot(db, time.Second*time.Duration(interval))
+
+			// Changed log
+			file, fErr := os.Create("./.cache/log.txt")
+
+			if fErr != nil {
+				log.Panic(fErr)
+			}
+
+			defer file.Close()
+
+			sliit_bot.RegisterChangeListener(func(h *bot.SLIITHistory) {
+				log.Println(h)
+				file.Write([]byte(fmt.Sprintf("%s changed \n", h.SiteID)))
+			})
+
+			// Start sliit bot
+			go func() {
+				if err := sliit_bot.Start(bot_context); err != nil {
+					log.Println(err)
+				}
+			}()
+
+			stop := false
+
+			select {
+			case <-restart_event:
+			case <-bot_context.Done():
+				log.Print(bot_context.Err())
+				return
+			case <-stop_event:
+				stop = true
+			}
+
+			timeout_ctx, cancel := context.WithTimeout(bot_context, time.Second*10)
+
+			defer cancel()
+
+			// Stop the Bot
+			log.Println("Stopping Bot")
+			if err := sliit_bot.Stop(timeout_ctx); err != nil {
+				log.Print(err)
+			}
+
+			if stop {
+				break
+			}
+		}
+		wait_to_stop <- true
+	}()
+
+	// Accept command from terminal
+	go func() {
+		reader := bufio.NewReader(os.Stdin)
+
+		for {
+			text, _ := reader.ReadString('\n')
+
+			if text == "rs" {
+				log.Println("Restarting the bot")
+				restart_event <- true
+			}
+		}
+	}()
+
+	<-proc_exit_event
+
+	// Trigger stop and wait to stop
+	close(stop_event)
+	<-wait_to_stop
+
+	timeout_ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
 
 	defer cancel()
 
-	// Start API
-	a := api.NewInstance(db, bot_context)
-	go a.Start()
-
-	sliit_bot := bot.NewBot(bot_context, db, time.Second*time.Duration(interval))
-
-	// Changed
-	file, fErr := os.Create("./.cache/log.txt")
-
-	if fErr != nil {
-		log.Panic(fErr)
+	// Stop the API
+	log.Println("Stopping the API")
+	if err := a.Stop(timeout_ctx); err != nil {
+		log.Println(err)
 	}
 
-	defer file.Close()
-
-	sliit_bot.RegisterChangeListener(func(h *bot.SLIITHistory) {
-		log.Println(h)
-		file.Write([]byte(fmt.Sprintf("%s changed \n", h.SiteID)))
-	})
-
-	go sliit_bot.Start()
-
-	<-exit_event
-	log.Printf("Exiting boii")
-	sliit_bot.Stop()
-	a.Stop(bot_context)
+	<-timeout_ctx.Done()
 }

@@ -17,7 +17,6 @@ import (
 
 type Instance struct {
 	db     *mongo.Database
-	ctx    context.Context
 	server *http.Server
 }
 
@@ -36,14 +35,13 @@ type SitesResponse struct {
 	Sites []bot.SLIITSite `json:"sites"`
 }
 
-func NewInstance(db *mongo.Database, ctx context.Context) *Instance {
+func NewInstance(db *mongo.Database) *Instance {
 	return &Instance{
-		db:  db,
-		ctx: ctx,
+		db: db,
 	}
 }
 
-func (i *Instance) Start() error {
+func (i *Instance) Start(ctx context.Context) error {
 	s := gin.Default()
 	db := i.db
 	// ctx := i.ctx
@@ -174,7 +172,18 @@ func (i *Instance) Start() error {
 		Handler: s,
 	}
 
-	return i.server.ListenAndServe()
+	hErr := make(chan error)
+
+	go func() {
+		hErr <- i.server.ListenAndServe()
+	}()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case e := <-hErr:
+		return e
+	}
 }
 
 func (i *Instance) Stop(ctx context.Context) error {
