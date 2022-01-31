@@ -16,8 +16,9 @@ import (
 )
 
 type Instance struct {
-	db     *mongo.Database
-	server *http.Server
+	db          *mongo.Database
+	server      *http.Server
+	restart_bot func()
 }
 
 type StateResponse struct {
@@ -165,6 +166,17 @@ func (i *Instance) Start(ctx context.Context) error {
 		c.JSON(200, newSuccessResponse("success"))
 	})
 
+	s.GET("/api/bot/restart", func(c *gin.Context) {
+		if i.restart_bot == nil {
+			c.AbortWithStatusJSON(400, newErrorResponse(fmt.Errorf("bot restarter not registered")))
+			return
+		}
+
+		i.restart_bot()
+
+		c.JSON(200, newSuccessResponse("success"))
+	})
+
 	s.StaticFS("/dashboard", gin.Dir("./dashboard", false))
 
 	i.server = &http.Server{
@@ -184,6 +196,10 @@ func (i *Instance) Start(ctx context.Context) error {
 	case e := <-hErr:
 		return e
 	}
+}
+
+func (i *Instance) RegisterBotRestarter(restart_func func()) {
+	i.restart_bot = restart_func
 }
 
 func (i *Instance) Stop(ctx context.Context) error {

@@ -74,7 +74,7 @@ function Site(props) {
             <div className="s-name px-2">{props.name}</div>
             <div className="spacer"></div>
             <div className="px-2">{props.url}</div>
-            <button type="button" onClick={disable_handler} className="btn btn-danger">{ !disabled ? "Disable" : "Enable"}</button>
+            <button type="button" onClick={disable_handler} className={`btn ${disabled ? "btn-primary" : "btn-danger"}`}>{ !disabled ? "Disable" : "Enable"}</button>
         </div>
     )
 }
@@ -155,10 +155,38 @@ function AddUser(props) {
 
 
 function TopBar(props) {
+    const [message, setMessage] = useState("")
+
+    const showMessage = (msg) => {
+        setMessage(msg)
+        setTimeout(()=> {
+            setMessage("")
+        }, 10000)
+    }
+
+    const restart_bot = async () => {
+        try{
+            let res = await fetch("/api/bot/restart")
+            res = await res.json()
+
+            if(res.error === true){
+                showMessage(`Error: ${res.message}`)
+                return
+            }
+
+            showMessage("Success")
+        }catch(e){
+            showMessage(`Error: ${e}`)
+        }
+    }
+
     return (
-        <div className="topbar mx-4 d-flex flex-row align-items-center mr-2">
-            <div onClick={props.users} className="d-flex justify-content-center align-items-center">Users</div>
-            <div onClick={props.sites} className="d-flex justify-content-center align-items-center">Sites</div>
+        <div className="topbar px-4 d-flex flex-row align-items-center">
+            <button onClick={props.users} className="btn btn-primary">Users</button>
+            <button onClick={props.sites} className="btn btn-primary mx-2">Sites</button>
+            <div className="spacer"></div>
+            <div className="px-4">{message}</div>
+            <button type="button" className="btn btn-danger" onClick={restart_bot}>Restart Bot</button>
         </div>
     )
 }

@@ -150,6 +150,11 @@ func main() {
 		}
 	}()
 
+	// Register Restarter
+	a.RegisterBotRestarter(func() {
+		restart_event <- true
+	})
+
 	<-proc_exit_event
 
 	// Trigger stop and wait to stop
