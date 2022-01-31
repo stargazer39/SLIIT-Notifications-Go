@@ -40,10 +40,10 @@ function SitesManager(props) {
     return (
         <div className="container">
             <h1>Site Manager</h1>
-            <button type="button" class="btn btn-info my-2">Add New +</button>
+            <button type="button" className="btn btn-info my-2">Add New +</button>
             { 
-                sites.map((s) => {
-                    return <Site name={s.name} url={s.url}/>
+                sites.map((s,i) => {
+                    return <Site key={i} name={s.name} url={s.url} id={s.id} disabled={s.disabled}/>
                 })
             }
         </div>
@@ -51,12 +51,30 @@ function SitesManager(props) {
 }
 
 function Site(props) {
+    const [disabled, setDisabled] = useState(props.disabled)
+
+    const disable_handler = async () => {
+        try{
+            let res = await fetch(`/api/sites/${props.id}/${disabled ? "enable" : "disable"}`)
+            res = await res.json()
+
+            if(res.error === true){
+                return
+            }
+
+            setDisabled((prev) => {
+                return !prev
+            })
+        }catch(e){
+            console.log(e)
+        }
+    }
     return (
         <div className="site d-flex flex-row justify-content-center align-items-center mb-1 py-2 px-2">
             <div className="s-name px-2">{props.name}</div>
             <div className="spacer"></div>
             <div className="px-2">{props.url}</div>
-            <button type="button" class="btn btn-danger">Disable</button>
+            <button type="button" onClick={disable_handler} className="btn btn-danger">{ !disabled ? "Disable" : "Enable"}</button>
         </div>
     )
 }
@@ -88,7 +106,7 @@ function UserManager(props) {
     return (
         <div className="container">
             <h1>User Manager</h1>
-            <button type="button" disabled={addUser} class="btn btn-info my-2" onClick={add_user}>Add New +</button>
+            <button type="button" disabled={addUser} className="btn btn-info my-2" onClick={add_user}>Add New +</button>
             {
                 function (){
                     if(addUser){
@@ -99,8 +117,8 @@ function UserManager(props) {
                 }()
             }
             { 
-                users.map((s) => {
-                    return <User username={s.username} />
+                users.map((s,i) => {
+                    return <User key={i} username={s.username} />
                 })
             }
         </div>
@@ -112,7 +130,7 @@ function User(props) {
         <div className="site d-flex flex-row justify-content-center align-items-center mb-1">
             <div className="s-name px-2">{props.username}</div>
             <div className="spacer"></div>
-            <button type="button" class="btn btn-danger">Yeet</button>
+            <button type="button" className="btn btn-danger">Yeet</button>
         </div>
     )
 }
@@ -120,16 +138,16 @@ function AddUser(props) {
     return (
         <div className="p-2 w-100 mb-1">
             <form>
-                <div class="form-group">
+                <div className="form-group">
                     <label for="username">Username</label>
-                    <input type="text" class="form-control" id="username" placeholder="ITXXXXX"/>
+                    <input type="text" className="form-control" id="username" placeholder="ITXXXXX"/>
                 </div><br/>
-                <div class="form-group">
+                <div className="form-group">
                     <label for="pass">Password</label>
-                    <input type="password" class="form-control" id="pass"/>
+                    <input type="password" className="form-control" id="pass"/>
                 </div><br/>
-                <button type="button" class="btn btn-danger">Add</button>
-                <button type="button" class="btn btn-danger mx-1">Cancel</button>
+                <button type="button" className="btn btn-danger">Add</button>
+                <button type="button" className="btn btn-danger mx-1">Cancel</button>
             </form>
         </div>
     )
@@ -140,7 +158,7 @@ function TopBar(props) {
     return (
         <div className="topbar mx-4 d-flex flex-row align-items-center mr-2">
             <div onClick={props.users} className="d-flex justify-content-center align-items-center">Users</div>
-            <div onClick={props.sites}className="d-flex justify-content-center align-items-center">Sites</div>
+            <div onClick={props.sites} className="d-flex justify-content-center align-items-center">Sites</div>
         </div>
     )
 }

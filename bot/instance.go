@@ -75,7 +75,11 @@ func (s *SLIITSyncable) Sync() (*SLIITHistory, error) {
 		k.Get("Sections"): 1,
 	})
 
-	res := s.db.Collection("history").FindOne(context.TODO(), SLIITHistory{SiteID: s.id}, findOpts)
+	filter := bson.M{
+		k.Get("SiteID"): s.id,
+	}
+
+	res := s.db.Collection("history").FindOne(context.TODO(), filter, findOpts)
 
 	if err := res.Decode(&old_history); err != nil {
 		if err == mongo.ErrNoDocuments {

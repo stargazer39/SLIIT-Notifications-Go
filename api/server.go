@@ -2,12 +2,15 @@ package api
 
 import (
 	"context"
+	"fmt"
+	"log"
 	"net/http"
 	"stargazer/SLIIT-Notifications/bot"
 	"stargazer/SLIIT-Notifications/keyreader"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -18,7 +21,7 @@ type Instance struct {
 	server *http.Server
 }
 
-type ErrorResponse struct {
+type StateResponse struct {
 	Message string `json:"message"`
 	Error   bool   `json:"error"`
 }
@@ -43,7 +46,7 @@ func NewInstance(db *mongo.Database, ctx context.Context) *Instance {
 func (i *Instance) Start() error {
 	s := gin.Default()
 	db := i.db
-	ctx := i.ctx
+	// ctx := i.ctx
 
 	s.GET("/api/users", func(c *gin.Context) {
 		var users []bot.SLIITUser
@@ -55,14 +58,14 @@ func (i *Instance) Start() error {
 			k.Get("Username"): 1,
 		})
 
-		cur, curErr := db.Collection("user").Find(ctx, bson.M{}, opts)
+		cur, curErr := db.Collection("user").Find(c, bson.M{}, opts)
 
 		if curErr != nil {
 			c.AbortWithStatusJSON(400, newErrorResponse(curErr))
 			return
 		}
 
-		if err := cur.All(ctx, &users); err != nil {
+		if err := cur.All(c, &users); err != nil {
 			c.AbortWithStatusJSON(400, newErrorResponse(err))
 			return
 		}
@@ -72,19 +75,96 @@ func (i *Instance) Start() error {
 
 	s.GET("/api/sites", func(c *gin.Context) {
 		var sites []bot.SLIITSite
-		cur, curErr := db.Collection("sites").Find(ctx, bson.M{})
+		cur, curErr := db.Collection("sites").Find(c, bson.M{})
 
 		if curErr != nil {
 			c.AbortWithStatusJSON(400, newErrorResponse(curErr))
 			return
 		}
 
-		if err := cur.All(ctx, &sites); err != nil {
+		if err := cur.All(c, &sites); err != nil {
 			c.AbortWithStatusJSON(400, newErrorResponse(err))
 			return
 		}
 
 		c.JSON(200, newSitesResponse(sites))
+	})
+
+	s.GET("/api/sites/:id/disable", func(c *gin.Context) {
+		id := c.Param("id")
+
+		k := keyreader.NewReader(bot.SLIITSite{}, "bson")
+
+		update := bson.M{
+			"$set": bson.M{
+				k.Get("Disabled"): true,
+			},
+		}
+
+		log.Println(update)
+
+		obj, objErr := primitive.ObjectIDFromHex(id)
+
+		if objErr != nil {
+			c.AbortWithStatusJSON(400, newErrorResponse(objErr))
+			return
+		}
+
+		filter := bson.M{
+			k.Get("ID"): obj,
+		}
+
+		res, uErr := db.Collection("sites").UpdateOne(c, filter, update)
+
+		if res.MatchedCount == 0 {
+			c.AbortWithStatusJSON(400, newErrorResponse(fmt.Errorf("no such site with id %s", id)))
+			return
+		}
+
+		if uErr != nil {
+			c.AbortWithStatusJSON(400, newErrorResponse(uErr))
+			return
+		}
+
+		c.JSON(200, newSuccessResponse("success"))
+	})
+
+	s.GET("/api/sites/:id/enable", func(c *gin.Context) {
+		id := c.Param("id")
+
+		k := keyreader.NewReader(bot.SLIITSite{}, "bson")
+
+		update := bson.M{
+			"$set": bson.M{
+				k.Get("Disabled"): false,
+			},
+		}
+		log.Println(update)
+
+		obj, objErr := primitive.ObjectIDFromHex(id)
+
+		if objErr != nil {
+			c.AbortWithStatusJSON(400, newErrorResponse(objErr))
+			return
+		}
+
+		filter := bson.M{
+			k.Get("ID"): obj,
+		}
+
+		res, uErr := db.Collection("sites").UpdateOne(c, filter, update)
+
+		if res.MatchedCount == 0 {
+			c.AbortWithStatusJSON(400, newErrorResponse(fmt.Errorf("no such site with id %s", id)))
+			return
+		}
+
+		if uErr != nil {
+			c.AbortWithStatusJSON(400, newErrorResponse(uErr))
+			return
+		}
+
+		c.JSON(200, newSuccessResponse("success"))
 	})
 
 	s.StaticFS("/dashboard", gin.Dir("./dashboard", false))
@@ -101,10 +181,17 @@ func (i *Instance) Stop(ctx context.Context) error {
 	return i.server.Shutdown(ctx)
 }
 
-func newErrorResponse(err error) ErrorResponse {
-	return ErrorResponse{
+func newErrorResponse(err error) StateResponse {
+	return StateResponse{
 		Error:   true,
 		Message: err.Error(),
+	}
+}
+
+func newSuccessResponse(msg string) StateResponse {
+	return StateResponse{
+		Error:   false,
+		Message: msg,
 	}
 }
 
