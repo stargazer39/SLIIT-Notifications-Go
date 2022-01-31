@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"stargazer/SLIIT-Notifications/api"
 	"stargazer/SLIIT-Notifications/bot"
 	"stargazer/SLIIT-Notifications/helpers"
 	"strconv"
@@ -68,6 +69,10 @@ func main() {
 
 	defer cancel()
 
+	// Start API
+	a := api.NewInstance(db, bot_context)
+	go a.Start()
+
 	sliit_bot := bot.NewBot(bot_context, db, time.Second*time.Duration(interval))
 
 	// Changed
@@ -89,4 +94,5 @@ func main() {
 	<-exit_event
 	log.Printf("Exiting boii")
 	sliit_bot.Stop()
+	a.Stop(bot_context)
 }
