@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"stargazer/SLIIT-Notifications/helpers"
 	"stargazer/SLIIT-Notifications/keyreader"
@@ -89,10 +90,14 @@ func (s *SLIITSyncable) Sync() (*SLIITHistory, error) {
 				}
 
 				t_hash := sha256.New()
-				t_hash.Write([]byte(sect.Text()))
+				if _, wErr := t_hash.Write([]byte(sect.Text())); wErr != nil {
+					log.Panic(wErr)
+				}
+
+				h := fmt.Sprintf("%x", t_hash.Sum(nil))
 
 				sections = append(sections, Section{
-					Hash:    fmt.Sprintf("%x", t_hash.Sum(nil)),
+					Hash:    h,
 					Section: sect_name,
 				})
 			})
@@ -110,17 +115,19 @@ func (s *SLIITSyncable) Sync() (*SLIITHistory, error) {
 			}
 
 			new_history := SLIITHistory{
-				ID:       primitive.NewObjectID(),
-				SiteID:   s.id,
-				Sections: sections,
-				HTML:     compressed,
+				ID:        primitive.NewObjectID(),
+				SiteID:    s.id,
+				Sections:  sections,
+				HTML:      compressed,
+				AddedTime: time.Now(),
 			}
 
 			if _, iErr := s.db.Collection("history").InsertOne(context.TODO(), new_history); iErr != nil {
 				return nil, iErr
 			}
-			log.Println("Completed")
-			log.Println(s.id)
+
+			log.Printf("Completed %s", s.id)
+
 			return nil, nil
 		} else {
 			return nil, err
@@ -145,7 +152,9 @@ func (s *SLIITSyncable) Sync() (*SLIITHistory, error) {
 		}
 
 		t_hash := sha256.New()
-		t_hash.Write([]byte(sect.Text()))
+		if _, wErr := t_hash.Write([]byte(sect.Text())); wErr != nil {
+			log.Panic(wErr)
+		}
 
 		h := fmt.Sprintf("%x", t_hash.Sum(nil))
 
@@ -173,10 +182,11 @@ func (s *SLIITSyncable) Sync() (*SLIITHistory, error) {
 		}
 
 		new_history := SLIITHistory{
-			ID:       primitive.NewObjectID(),
-			SiteID:   s.id,
-			Sections: sections,
-			HTML:     compressed,
+			ID:        primitive.NewObjectID(),
+			SiteID:    s.id,
+			Sections:  sections,
+			HTML:      compressed,
+			AddedTime: time.Now(),
 		}
 
 		if _, iErr := s.db.Collection("history").InsertOne(context.TODO(), new_history); iErr != nil {
@@ -188,70 +198,6 @@ func (s *SLIITSyncable) Sync() (*SLIITHistory, error) {
 	}
 
 	return nil, nil
-
-	// fileName := fmt.Sprintf(".cache/%s.json", url.PathEscape(s.title))
-
-	/* if _, err := os.Stat(fileName); err == nil {
-		objects := []Section{}
-		objmap := make(map[string]string)
-
-		f, fErr := ioutil.ReadFile(fileName)
-
-		if fErr != nil {
-			return fErr
-		}
-
-		if err := json.Unmarshal(f, &objects); err != nil {
-			return err
-		}
-
-		for _, v := range objects {
-			objmap[v.Section] = v.Hash
-		}
-
-		doc.Find(".section.main").Each(func(i int, sect *goquery.Selection) {
-			t_hash := sha256.New()
-			t_hash.Write([]byte(sect.Text()))
-
-			h := fmt.Sprintf("%x", t_hash.Sum(nil))
-			id := sect.AttrOr("id", "unknown")
-
-			if lHash, ok := objmap[id]; ok {
-				if strings.Compare(h, lHash) != 0 {
-					log.Printf("%s from %s Changed.", s.id, id)
-				}
-			}
-
-		})
-		// log.Println(objects)
-	} */
-
-	/* f, fErr := os.Create(fileName)
-
-	if fErr != nil {
-		return fErr
-	}
-
-	defer f.Close()
-
-	hashes := []Section{}
-
-	doc.Find(".section.main").Each(func(i int, sect *goquery.Selection) {
-		t_hash := sha256.New()
-		t_hash.Write([]byte(sect.Text()))
-		hashes = append(hashes, Section{
-			Hash:    fmt.Sprintf("%x", t_hash.Sum(nil)),
-			Section: sect.AttrOr("id", "unknown"),
-		})
-	})
-
-	jBytes, jErr := json.MarshalIndent(hashes, "", "   ")
-
-	if jErr != nil {
-		return jErr
-	}
-
-	f.Write(jBytes) */
 }
 
 func (s *SLIITSyncable) Login() error {
@@ -282,8 +228,3 @@ func (s *SLIITSyncable) Login() error {
 	}
 	return nil
 }
-
-/*
-	pointer to SLIITUser
-	cookiejar
-*/

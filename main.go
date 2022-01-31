@@ -40,7 +40,9 @@ func main() {
 		log.Panicln(cErr)
 	}
 
-	ctx, _ := context.WithTimeout(context.Background(), time.Second*10)
+	ctx, cancel_ctx := context.WithTimeout(context.Background(), time.Second*10)
+
+	defer cancel_ctx()
 
 	conErr := client.Connect(ctx)
 

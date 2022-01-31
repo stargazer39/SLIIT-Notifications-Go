@@ -2,6 +2,7 @@ package bot
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"net/http/cookiejar"
@@ -28,6 +29,7 @@ type SLIITUser struct {
 	ID       primitive.ObjectID `bson:"_id" json:"id,omitempty"`
 	Username string             `bson:"username" json:"username,omitempty"`
 	Password string             `bson:"password" json:"password,omitempty"`
+	Disabled bool               `bson:"disabled" json:"disabled,omitempty"`
 }
 
 type SLIITSite struct {
@@ -36,13 +38,15 @@ type SLIITSite struct {
 	UserID    primitive.ObjectID `bson:"uid,omitempty" json:"uid,omitempty"`
 	URL       string             `bson:"url,omitempty" json:"url,omitempty"`
 	AddedTime time.Time          `bson:"added_time,omitempty" json:"added_time,omitempty"`
+	Disabled  bool               `bson:"disabled" json:"disabled,omitempty"`
 }
 
 type SLIITHistory struct {
-	ID       primitive.ObjectID `bson:"_id,omitempty" json:"id,omitempty"`
-	SiteID   primitive.ObjectID `bson:"sid,omitempty" json:"sid,omitempty"`
-	Sections []Section          `bson:"sects,omitempty" json:"sects,omitempty"`
-	HTML     string             `bson:"html,omitempty" json:"html,omitempty"`
+	ID        primitive.ObjectID `bson:"_id,omitempty" json:"id,omitempty"`
+	SiteID    primitive.ObjectID `bson:"sid,omitempty" json:"sid,omitempty"`
+	Sections  []Section          `bson:"sects,omitempty" json:"sects,omitempty"`
+	HTML      string             `bson:"html,omitempty" json:"html,omitempty"`
+	AddedTime time.Time          `bson:"added_time,omitempty" json:"added_time,omitempty"`
 }
 
 func NewBot(ctx context.Context, db *mongo.Database, interval time.Duration) *SLIITBot {
@@ -64,14 +68,18 @@ func (s *SLIITBot) Start() error {
 	cur, curErr := s.db.Collection("user").Find(context.TODO(), bson.D{})
 
 	if curErr != nil {
-		return curErr
+		return fmt.Errorf("user collection read error: %w", curErr)
 	}
 
 	if err := cur.All(context.TODO(), &users); err != nil {
-		return err
+		return fmt.Errorf("user collection read error: %w", err)
 	}
 
 	syncables, sErr := s.generateSyncables(users)
+
+	if sErr != nil {
+		return fmt.Errorf("syncable generation error: %w", sErr)
+	}
 
 	length := len(syncables)
 	done := make(chan bool, 8)
@@ -110,6 +118,7 @@ out:
 						s.change_listeners[j](history)
 					}
 				}
+
 				wg.Done()
 				<-done
 			}()
@@ -137,9 +146,35 @@ func (s *SLIITBot) RegisterChangeListener(h func(his *SLIITHistory)) {
 func (s *SLIITBot) generateSyncables(users []SLIITUser) ([]SLIITSyncable, error) {
 	var syncable []SLIITSyncable
 
+	// Get already existing sites
+	var sites []SLIITSite
+
+	cur, curErr := s.db.Collection("sites").Find(context.TODO(), bson.D{})
+
+	if curErr != nil {
+		return nil, fmt.Errorf("generateSyncables error: %w", curErr)
+	}
+
+	if err := cur.All(context.TODO(), &sites); err != nil {
+		return nil, fmt.Errorf("generateSyncables error: %w", err)
+	}
+
+	// Map them
+	var site_map = make(map[string]*SLIITSite)
+
+	for i := range sites {
+		site_map[sites[i].Name] = &sites[i]
+	}
+
 	for i := 0; i < len(users); i++ {
 		currentUser := &users[i]
 
+		// Continue if disabled
+		if currentUser.Disabled {
+			continue
+		}
+
+		// Create http client
 		jar, err := cookiejar.New(nil)
 
 		if err != nil {
@@ -152,53 +187,27 @@ func (s *SLIITBot) generateSyncables(users []SLIITUser) ([]SLIITSyncable, error)
 			Timeout: 30 * time.Second,
 		}
 
-		resp, err := client.PostForm(
-			"https://courseweb.sliit.lk/login/index.php",
-			url.Values{
-				"username": {currentUser.Username},
-				"password": {currentUser.Password},
-			},
-		)
+		// Try to login
+		r_count := 0
+	retry:
+		doc, doErr := doPostFormGetDoc(client, currentUser)
 
-		if err != nil {
-			log.Println(err)
-			continue
+		if doErr != nil {
+			r_count++
+
+			if r_count > 5 {
+				return nil, fmt.Errorf("generateSyncables error: %w", doErr)
+			}
+			time.Sleep(time.Second * 10)
+			goto retry
 		}
 
-		defer resp.Body.Close()
-
-		doc, qerr := goquery.NewDocumentFromReader(resp.Body)
-
-		if qerr != nil {
-			log.Println(qerr)
-			continue
-		}
-
+		// Check if logged in
 		logged := assertLogin(doc, currentUser.Username)
 
 		if !logged {
 			log.Printf("Loggin faild for user - %s\n", currentUser.Username)
 			continue
-		}
-
-		// Get already existing sites
-		var sites []SLIITSite
-
-		cur, curErr := s.db.Collection("sites").Find(context.TODO(), bson.D{})
-
-		if curErr != nil {
-			return nil, curErr
-		}
-
-		if err := cur.All(context.TODO(), &sites); err != nil {
-			return nil, err
-		}
-
-		// Map them
-		var site_map = make(map[string]*SLIITSite)
-
-		for i := range sites {
-			site_map[sites[i].Name] = &sites[i]
 		}
 
 		selec := doc.Find("a[title='My courses'] ~ ul > li a")
@@ -209,9 +218,11 @@ func (s *SLIITBot) generateSyncables(users []SLIITUser) ([]SLIITSyncable, error)
 			if exists {
 				log.Println(url)
 				name := sel.Text()
+				// Get the existing site
 				site, ok := site_map[name]
 				var mId primitive.ObjectID
 
+				// If site dosen't exist add it
 				if !ok {
 					res, inErr := s.db.Collection("sites").InsertOne(context.TODO(), SLIITSite{
 						ID:        primitive.NewObjectID(),
@@ -219,6 +230,7 @@ func (s *SLIITBot) generateSyncables(users []SLIITUser) ([]SLIITSyncable, error)
 						UserID:    currentUser.ID,
 						URL:       url,
 						AddedTime: time.Now(),
+						Disabled:  false,
 					})
 
 					if inErr != nil {
@@ -231,6 +243,11 @@ func (s *SLIITBot) generateSyncables(users []SLIITUser) ([]SLIITSyncable, error)
 					mId = site.ID
 				}
 
+				// If site disabled, return
+				if site.Disabled {
+					return
+				}
+				// New syncable
 				s := NewSLIITSyncable(name, currentUser, url, client, s.db, mId)
 				syncable = append(syncable, *s)
 			}
@@ -251,4 +268,28 @@ func assertLogin(doc *goquery.Document, username string) bool {
 	logged := strings.Contains(strings.ToLower(usertext), strings.ToLower(username))
 
 	return logged
+}
+
+func doPostFormGetDoc(client *http.Client, user *SLIITUser) (*goquery.Document, error) {
+	resp, err := client.PostForm(
+		"https://courseweb.sliit.lk/login/index.php",
+		url.Values{
+			"username": {user.Username},
+			"password": {user.Password},
+		},
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("loginAndGetDoc: %w", err)
+	}
+
+	defer resp.Body.Close()
+
+	doc, qErr := goquery.NewDocumentFromReader(resp.Body)
+
+	if qErr != nil {
+		return nil, fmt.Errorf("loginAndGetDoc: %w", qErr)
+	}
+
+	return doc, nil
 }
