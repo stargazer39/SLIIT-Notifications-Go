@@ -114,12 +114,15 @@ func (s *SLIITSyncable) Sync() (*SLIITHistory, error) {
 				return nil, cErr
 			}
 
+			_id := primitive.NewObjectID()
+
 			new_history := SLIITHistory{
-				ID:        primitive.NewObjectID(),
+				ID:        _id,
 				SiteID:    s.id,
 				Sections:  sections,
 				HTML:      compressed,
 				AddedTime: time.Now(),
+				LastID:    _id,
 			}
 
 			if _, iErr := s.db.Collection("history").InsertOne(context.TODO(), new_history); iErr != nil {
@@ -187,6 +190,7 @@ func (s *SLIITSyncable) Sync() (*SLIITHistory, error) {
 			Sections:  sections,
 			HTML:      compressed,
 			AddedTime: time.Now(),
+			LastID:    old_history.ID,
 		}
 
 		if _, iErr := s.db.Collection("history").InsertOne(context.TODO(), new_history); iErr != nil {
