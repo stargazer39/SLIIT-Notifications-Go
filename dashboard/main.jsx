@@ -55,7 +55,9 @@ function Site(props) {
 
     const disable_handler = async () => {
         try{
-            let res = await fetch(`/api/sites/${props.id}/${disabled ? "enable" : "disable"}`)
+            let res = await fetch(`/api/sites/${props.id}/${disabled ? "enable" : "disable"}`, {
+                method: "POST",
+            })
             res = await res.json()
 
             if(res.error === true){
@@ -70,9 +72,9 @@ function Site(props) {
         }
     }
     return (
-        <div className="site d-flex flex-row justify-content-center align-items-center mb-1 py-2 px-2">
-            <div className="s-name px-2">{props.name}</div>
-            <div className="spacer"></div>
+        <div className="site d-flex flex-row justify-content-center align-items-center mb-1 py-2 px-2 w-100">
+            <div className="px-2 w-50">{props.name}</div>
+            <div className="w-">{props.id}</div>
             <div className="px-2">{props.url}</div>
             <button type="button" onClick={disable_handler} className={`btn ${disabled ? "btn-primary" : "btn-danger"}`}>{ !disabled ? "Disable" : "Enable"}</button>
         </div>
@@ -118,7 +120,7 @@ function UserManager(props) {
             }
             { 
                 users.map((s,i) => {
-                    return <User key={i} username={s.username} />
+                    return <User key={i} username={s.username} id={s.id} />
                 })
             }
         </div>
@@ -126,12 +128,37 @@ function UserManager(props) {
 }
 
 function User(props) {
+    const [sites, setSites] = useState([])
+
+    const show_sites_handler =  async() => {
+        try{
+            let res = await fetch(`/api/users/${props.id}/sites`)
+            res = await res.json();
+
+            if(res.error ===  false){
+                setSites(res.sites)
+            }
+        }catch(e){
+            console.log(e)
+        }
+    }
+
     return (
-        <div className="site d-flex flex-row justify-content-center align-items-center mb-1">
-            <div className="s-name px-2">{props.username}</div>
-            <div className="spacer"></div>
-            <button type="button" className="btn btn-danger">Yeet</button>
-        </div>
+        <>
+            <div onClick={show_sites_handler} className="site d-flex flex-row justify-content-center align-items-center mb-1">
+                <div className="px-2">{props.username}</div>
+                <div className="spacer">{props.id}</div>
+                <button type="button" className="btn btn-danger">Yeet</button>
+            </div>
+            <div className="user-site-container mx-2">
+                {
+                    sites.map((s,i) => {
+                        return <Site key={i} id={s.id} name={s.name} url={s.url} disabled={s.disabled}/>
+                    })
+                }
+            </div>
+        </>
+        
     )
 }
 function AddUser(props) {
@@ -166,7 +193,9 @@ function TopBar(props) {
 
     const restart_bot = async () => {
         try{
-            let res = await fetch("/api/bot/restart")
+            let res = await fetch("/api/bot/restart", {
+                method:"POST"
+            })
             res = await res.json()
 
             if(res.error === true){

@@ -72,6 +72,39 @@ func (i *Instance) Start(ctx context.Context) error {
 		c.JSON(200, newUsersResponse(users))
 	})
 
+	s.GET("/api/users/:id/sites", func(c *gin.Context) {
+		var sites []bot.SLIITSite
+
+		id := c.Param("id")
+
+		obj, objErr := primitive.ObjectIDFromHex(id)
+
+		if objErr != nil {
+			c.AbortWithStatusJSON(400, newErrorResponse(objErr))
+			return
+		}
+
+		k := keyreader.NewReader(bot.SLIITSite{}, "bson")
+
+		filter := bson.M{
+			k.Get("UserID"): obj,
+		}
+
+		cur, curErr := db.Collection("sites").Find(c, filter)
+
+		if curErr != nil {
+			c.AbortWithStatusJSON(400, newErrorResponse(curErr))
+			return
+		}
+
+		if err := cur.All(c, &sites); err != nil {
+			c.AbortWithStatusJSON(400, newErrorResponse(err))
+			return
+		}
+
+		c.JSON(200, newSitesResponse(sites))
+	})
+
 	s.GET("/api/sites", func(c *gin.Context) {
 		var sites []bot.SLIITSite
 		cur, curErr := db.Collection("sites").Find(c, bson.M{})
@@ -89,7 +122,7 @@ func (i *Instance) Start(ctx context.Context) error {
 		c.JSON(200, newSitesResponse(sites))
 	})
 
-	s.GET("/api/sites/:id/disable", func(c *gin.Context) {
+	s.POST("/api/sites/:id/disable", func(c *gin.Context) {
 		id := c.Param("id")
 
 		k := keyreader.NewReader(bot.SLIITSite{}, "bson")
@@ -128,7 +161,7 @@ func (i *Instance) Start(ctx context.Context) error {
 		c.JSON(200, newSuccessResponse("success"))
 	})
 
-	s.GET("/api/sites/:id/enable", func(c *gin.Context) {
+	s.POST("/api/sites/:id/enable", func(c *gin.Context) {
 		id := c.Param("id")
 
 		k := keyreader.NewReader(bot.SLIITSite{}, "bson")
@@ -166,7 +199,7 @@ func (i *Instance) Start(ctx context.Context) error {
 		c.JSON(200, newSuccessResponse("success"))
 	})
 
-	s.GET("/api/bot/restart", func(c *gin.Context) {
+	s.POST("/api/bot/restart", func(c *gin.Context) {
 		if i.restart_bot == nil {
 			c.AbortWithStatusJSON(400, newErrorResponse(fmt.Errorf("bot restarter not registered")))
 			return

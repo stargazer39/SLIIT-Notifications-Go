@@ -23,6 +23,27 @@ func main() {
 		log.Panicln(err)
 	}
 
+	/* Test code start */
+	/* t := telegram.NewClient(os.Getenv("TELEGRAM_BOT_TOKEN"))
+
+	t.IncomingUpdateListener(func(u telegram.Update) error {
+		log.Println(u.Message.Text)
+		e := t.SendMessage(fmt.Sprint(u.Message.From.ID), "Hello "+u.Message.Text)
+		log.Println(e)
+		return nil
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	defer cancel()
+
+	if err := t.Start(ctx); err != nil {
+		log.Panic(err)
+	}
+
+	return */
+	/* Test code end */
+
 	// Handle exit
 	proc_exit_event := make(chan os.Signal, 1)
 	signal.Notify(proc_exit_event, os.Interrupt)
