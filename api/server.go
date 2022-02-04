@@ -83,7 +83,7 @@ func (i *Instance) Start(ctx context.Context) error {
 		}
 
 		filter := bson.M{
-			bot.SLIITUserK.Get("UserID"): obj,
+			bot.SLIITSiteK.Get("UserID"): obj,
 		}
 
 		cur, curErr := db.Collection("sites").Find(c, filter)
