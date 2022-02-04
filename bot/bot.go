@@ -28,11 +28,11 @@ type SLIITBot struct {
 }
 
 type SLIITUser struct {
-	ID       primitive.ObjectID `bson:"_id" json:"id,omitempty"`
-	Username string             `bson:"username" json:"username,omitempty"`
-	Password string             `bson:"password" json:"password,omitempty"`
-	DegreeID string             `bson:"degree_id" json:"degree_id,omitempty"`
-	Disabled bool               `bson:"disabled" json:"disabled,omitempty"`
+	ID       primitive.ObjectID `bson:"_id,omitempty" json:"id,omitempty"`
+	Username string             `bson:"username,omitempty" json:"username,omitempty"`
+	Password string             `bson:"password,omitempty" json:"password,omitempty"`
+	DegreeID string             `bson:"degree_id,omitempty" json:"degree_id,omitempty"`
+	Disabled bool               `bson:"disabled,omitempty" json:"disabled,omitempty"`
 }
 
 type SLIITSite struct {
