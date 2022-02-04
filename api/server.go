@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"stargazer/SLIIT-Notifications/bot"
 
+	"github.com/gin-gonic/contrib/static"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -42,171 +43,173 @@ func NewInstance(db *mongo.Database) *Instance {
 }
 
 func (i *Instance) Start(ctx context.Context) error {
-	s := gin.Default()
+	router := gin.Default()
 	db := i.db
-	// ctx := i.ctx
 
-	s.GET("/api/users", func(c *gin.Context) {
-		var users []bot.SLIITUser
+	api := router.Group("/api")
+	{
+		api.GET("/users", func(c *gin.Context) {
+			var users []bot.SLIITUser
 
-		opts := options.Find()
-		opts.SetProjection(bson.M{
-			bot.SLIITUserK.Get("ID"):       1,
-			bot.SLIITUserK.Get("Username"): 1,
+			opts := options.Find()
+			opts.SetProjection(bson.M{
+				bot.SLIITUserK.Get("ID"):       1,
+				bot.SLIITUserK.Get("Username"): 1,
+			})
+
+			cur, curErr := db.Collection("user").Find(c, bson.M{}, opts)
+
+			if curErr != nil {
+				c.AbortWithStatusJSON(400, newErrorResponse(curErr))
+				return
+			}
+
+			if err := cur.All(c, &users); err != nil {
+				c.AbortWithStatusJSON(400, newErrorResponse(err))
+				return
+			}
+
+			c.JSON(200, newUsersResponse(users))
 		})
 
-		cur, curErr := db.Collection("user").Find(c, bson.M{}, opts)
+		api.GET("/users/:id/sites", func(c *gin.Context) {
+			var sites []bot.SLIITSite
 
-		if curErr != nil {
-			c.AbortWithStatusJSON(400, newErrorResponse(curErr))
-			return
-		}
+			id := c.Param("id")
 
-		if err := cur.All(c, &users); err != nil {
-			c.AbortWithStatusJSON(400, newErrorResponse(err))
-			return
-		}
+			obj, objErr := primitive.ObjectIDFromHex(id)
 
-		c.JSON(200, newUsersResponse(users))
-	})
+			if objErr != nil {
+				c.AbortWithStatusJSON(400, newErrorResponse(objErr))
+				return
+			}
 
-	s.GET("/api/users/:id/sites", func(c *gin.Context) {
-		var sites []bot.SLIITSite
+			filter := bson.M{
+				bot.SLIITSiteK.Get("UserID"): obj,
+			}
 
-		id := c.Param("id")
+			cur, curErr := db.Collection("sites").Find(c, filter)
 
-		obj, objErr := primitive.ObjectIDFromHex(id)
+			if curErr != nil {
+				c.AbortWithStatusJSON(400, newErrorResponse(curErr))
+				return
+			}
 
-		if objErr != nil {
-			c.AbortWithStatusJSON(400, newErrorResponse(objErr))
-			return
-		}
+			if err := cur.All(c, &sites); err != nil {
+				c.AbortWithStatusJSON(400, newErrorResponse(err))
+				return
+			}
 
-		filter := bson.M{
-			bot.SLIITSiteK.Get("UserID"): obj,
-		}
+			c.JSON(200, newSitesResponse(sites))
+		})
 
-		cur, curErr := db.Collection("sites").Find(c, filter)
+		api.GET("/sites", func(c *gin.Context) {
+			var sites []bot.SLIITSite
+			cur, curErr := db.Collection("sites").Find(c, bson.M{})
 
-		if curErr != nil {
-			c.AbortWithStatusJSON(400, newErrorResponse(curErr))
-			return
-		}
+			if curErr != nil {
+				c.AbortWithStatusJSON(400, newErrorResponse(curErr))
+				return
+			}
 
-		if err := cur.All(c, &sites); err != nil {
-			c.AbortWithStatusJSON(400, newErrorResponse(err))
-			return
-		}
+			if err := cur.All(c, &sites); err != nil {
+				c.AbortWithStatusJSON(400, newErrorResponse(err))
+				return
+			}
 
-		c.JSON(200, newSitesResponse(sites))
-	})
+			c.JSON(200, newSitesResponse(sites))
+		})
 
-	s.GET("/api/sites", func(c *gin.Context) {
-		var sites []bot.SLIITSite
-		cur, curErr := db.Collection("sites").Find(c, bson.M{})
+		api.POST("/sites/:id/disable", func(c *gin.Context) {
+			id := c.Param("id")
 
-		if curErr != nil {
-			c.AbortWithStatusJSON(400, newErrorResponse(curErr))
-			return
-		}
+			update := bson.M{
+				"$set": bson.M{
+					bot.SLIITSiteK.Get("Disabled"): true,
+				},
+			}
 
-		if err := cur.All(c, &sites); err != nil {
-			c.AbortWithStatusJSON(400, newErrorResponse(err))
-			return
-		}
+			log.Println(update)
 
-		c.JSON(200, newSitesResponse(sites))
-	})
+			obj, objErr := primitive.ObjectIDFromHex(id)
 
-	s.POST("/api/sites/:id/disable", func(c *gin.Context) {
-		id := c.Param("id")
+			if objErr != nil {
+				c.AbortWithStatusJSON(400, newErrorResponse(objErr))
+				return
+			}
 
-		update := bson.M{
-			"$set": bson.M{
-				bot.SLIITSiteK.Get("Disabled"): true,
-			},
-		}
+			filter := bson.M{
+				bot.SLIITSiteK.Get("ID"): obj,
+			}
 
-		log.Println(update)
+			res, uErr := db.Collection("sites").UpdateOne(c, filter, update)
 
-		obj, objErr := primitive.ObjectIDFromHex(id)
+			if res.MatchedCount == 0 {
+				c.AbortWithStatusJSON(400, newErrorResponse(fmt.Errorf("no such site with id %s", id)))
+				return
+			}
 
-		if objErr != nil {
-			c.AbortWithStatusJSON(400, newErrorResponse(objErr))
-			return
-		}
+			if uErr != nil {
+				c.AbortWithStatusJSON(400, newErrorResponse(uErr))
+				return
+			}
 
-		filter := bson.M{
-			bot.SLIITSiteK.Get("ID"): obj,
-		}
+			c.JSON(200, newSuccessResponse("success"))
+		})
 
-		res, uErr := db.Collection("sites").UpdateOne(c, filter, update)
+		api.POST("/sites/:id/enable", func(c *gin.Context) {
+			id := c.Param("id")
 
-		if res.MatchedCount == 0 {
-			c.AbortWithStatusJSON(400, newErrorResponse(fmt.Errorf("no such site with id %s", id)))
-			return
-		}
+			update := bson.M{
+				"$set": bson.M{
+					bot.SLIITSiteK.Get("Disabled"): false,
+				},
+			}
+			log.Println(update)
 
-		if uErr != nil {
-			c.AbortWithStatusJSON(400, newErrorResponse(uErr))
-			return
-		}
+			obj, objErr := primitive.ObjectIDFromHex(id)
 
-		c.JSON(200, newSuccessResponse("success"))
-	})
+			if objErr != nil {
+				c.AbortWithStatusJSON(400, newErrorResponse(objErr))
+				return
+			}
 
-	s.POST("/api/sites/:id/enable", func(c *gin.Context) {
-		id := c.Param("id")
+			filter := bson.M{
+				bot.SLIITSiteK.Get("ID"): obj,
+			}
 
-		update := bson.M{
-			"$set": bson.M{
-				bot.SLIITSiteK.Get("Disabled"): false,
-			},
-		}
-		log.Println(update)
+			res, uErr := db.Collection("sites").UpdateOne(c, filter, update)
 
-		obj, objErr := primitive.ObjectIDFromHex(id)
+			if res.MatchedCount == 0 {
+				c.AbortWithStatusJSON(400, newErrorResponse(fmt.Errorf("no such site with id %s", id)))
+				return
+			}
 
-		if objErr != nil {
-			c.AbortWithStatusJSON(400, newErrorResponse(objErr))
-			return
-		}
+			if uErr != nil {
+				c.AbortWithStatusJSON(400, newErrorResponse(uErr))
+				return
+			}
 
-		filter := bson.M{
-			bot.SLIITSiteK.Get("ID"): obj,
-		}
+			c.JSON(200, newSuccessResponse("success"))
+		})
 
-		res, uErr := db.Collection("sites").UpdateOne(c, filter, update)
+		api.POST("/bot/restart", func(c *gin.Context) {
+			if i.restart_bot == nil {
+				c.AbortWithStatusJSON(400, newErrorResponse(fmt.Errorf("bot restarter not registered")))
+				return
+			}
 
-		if res.MatchedCount == 0 {
-			c.AbortWithStatusJSON(400, newErrorResponse(fmt.Errorf("no such site with id %s", id)))
-			return
-		}
+			i.restart_bot()
 
-		if uErr != nil {
-			c.AbortWithStatusJSON(400, newErrorResponse(uErr))
-			return
-		}
+			c.JSON(200, newSuccessResponse("success"))
+		})
+	}
 
-		c.JSON(200, newSuccessResponse("success"))
-	})
-
-	s.POST("/api/bot/restart", func(c *gin.Context) {
-		if i.restart_bot == nil {
-			c.AbortWithStatusJSON(400, newErrorResponse(fmt.Errorf("bot restarter not registered")))
-			return
-		}
-
-		i.restart_bot()
-
-		c.JSON(200, newSuccessResponse("success"))
-	})
-
-	s.StaticFS("/ui", gin.Dir("./ui", false))
+	router.Use(static.Serve("/", static.LocalFile("./ui", true)))
 
 	i.server = &http.Server{
 		Addr:    ":8080",
-		Handler: s,
+		Handler: router,
 	}
 
 	hErr := make(chan error)
