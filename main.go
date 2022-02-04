@@ -10,13 +10,25 @@ import (
 	"stargazer/SLIIT-Notifications/api"
 	"stargazer/SLIIT-Notifications/bot"
 	"stargazer/SLIIT-Notifications/helpers"
+	"stargazer/SLIIT-Notifications/keyreader"
+	"stargazer/SLIIT-Notifications/telegram"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
+
+// Subscribed Module and the doner user id is the same
+type TelegramUser struct {
+	ChatID        int32              `bson:"chat_id,omitempty" json:"chat_id"`
+	AddedTime     time.Time          `bson:"added_time,omitempty" json:"added_time"`
+	SubscribedDeg primitive.ObjectID `bson:"deg_uid,omitempty" json:"site_id"`
+}
 
 func main() {
 	if err := godotenv.Load(); err != nil {
@@ -95,6 +107,147 @@ func main() {
 		}
 	}()
 
+	// Start Telegram client
+	// New telegram client
+	tc := telegram.NewClient(os.Getenv("TELEGRAM_BOT_TOKEN"))
+
+	// Manage Telegram client
+	kr_tu := keyreader.NewReader(TelegramUser{}, "bson")
+	kr_usr := keyreader.NewReader(bot.SLIITUser{}, "bson")
+
+	tc.IncomingUpdateListener(func(u telegram.Update) error {
+		if strings.HasPrefix(u.Message.Text, "/") {
+			command := strings.Split(u.Message.Text, " ")
+			exist := false
+
+			filter := bson.M{
+				kr_tu.Get("ChatID"): u.Message.From.ID,
+			}
+
+			n, err := db.Collection("telegram_admin").CountDocuments(context.TODO(), filter)
+
+			if err != nil {
+				return tc.SendMessage(fmt.Sprint(u.Message.From.ID), "Database error")
+			}
+
+			if n > 0 {
+				exist = true
+			}
+
+			switch command[0] {
+			case "/admin":
+				if exist {
+					return tc.SendMessage(fmt.Sprint(u.Message.From.ID), "Alredy exist")
+				}
+
+				if len(command) < 2 {
+					return tc.SendMessage(fmt.Sprint(u.Message.From.ID), "Where's the password?")
+				}
+
+				if strings.Compare(command[1], os.Getenv("TELEGRAM_PASSWORD")) != 0 {
+					return tc.SendMessage(fmt.Sprint(u.Message.From.ID), "Wrong password?")
+				}
+
+				// Add to Database
+				t_user := TelegramUser{
+					ChatID:    u.Message.From.ID,
+					AddedTime: time.Now(),
+				}
+
+				if _, err := db.Collection("telegram_admin").InsertOne(context.TODO(), &t_user); err != nil {
+					return tc.SendMessage(fmt.Sprint(u.Message.From.ID), "Database error")
+				}
+
+				return tc.SendMessage(fmt.Sprint(u.Message.From.ID), "Welcome")
+
+			case "/list":
+				if !exist {
+					return tc.SendMessage(fmt.Sprint(u.Message.Chat.ID), "You are not an admin")
+				}
+
+				cur, curErr := db.Collection("user").Find(context.TODO(), bson.M{})
+
+				if curErr != nil {
+					return tc.SendMessage(fmt.Sprint(u.Message.Chat.ID), "Database error")
+				}
+
+				var users []bot.SLIITUser
+				if err := cur.All(context.TODO(), &users); err != nil {
+					return tc.SendMessage(fmt.Sprint(u.Message.Chat.ID), "Database error")
+				}
+
+				message := ""
+
+				for _, usr := range users {
+					message += usr.DegreeID + "\n"
+				}
+
+				return tc.SendMessage(fmt.Sprint(u.Message.Chat.ID), message)
+
+			case "/addme":
+				log.Println(u)
+				if !exist {
+					return tc.SendMessage(fmt.Sprint(u.Message.Chat.ID), "You are not an admin")
+				}
+
+				if len(command) < 2 {
+					return tc.SendMessage(fmt.Sprint(u.Message.Chat.ID), "Specify the degree you want to subscribe to")
+				}
+
+				filter = bson.M{
+					kr_usr.Get("DegreeID"): command[1],
+				}
+				// Get semester with the specific id
+				res_usr := db.Collection("user").FindOne(context.TODO(), filter)
+
+				if err != nil {
+					return tc.SendMessage(fmt.Sprint(u.Message.Chat.ID), "Database error")
+				}
+
+				var user bot.SLIITUser
+
+				if err := res_usr.Decode(&user); err != nil {
+					return tc.SendMessage(fmt.Sprint(u.Message.Chat.ID), "No such degree")
+				}
+
+				filter := bson.M{
+					kr_tu.Get("SubscribedDeg"): user.ID,
+				}
+				// tc.SendMessage(fmt.Sprint(u.Message.Chat.ID), "Hi")
+				n_count, err := db.Collection("telegram_groups").CountDocuments(context.TODO(), filter)
+
+				if err != nil {
+					log.Panic(err)
+				}
+
+				if n_count > 0 {
+					return tc.SendMessage(fmt.Sprint(u.Message.Chat.ID), "Already added")
+				}
+
+				t_user := TelegramUser{
+					ChatID:        u.Message.Chat.ID,
+					AddedTime:     time.Now(),
+					SubscribedDeg: user.ID,
+				}
+
+				if _, err := db.Collection("telegram_groups").InsertOne(context.TODO(), t_user); err != nil {
+					return tc.SendMessage(fmt.Sprint(u.Message.Chat.ID), "Database error")
+				}
+
+				return tc.SendMessage(fmt.Sprint(u.Message.Chat.ID), "Success")
+			}
+		}
+
+		return nil
+	})
+
+	go func() {
+		if err := tc.Start(main_ctx); err != nil {
+			log.Println(err)
+			cancel_main()
+		}
+	}()
+
 	restart_event := make(chan bool)
 	stop_event := make(chan bool)
 	wait_to_stop := make(chan bool)
@@ -117,8 +270,41 @@ func main() {
 
 			defer file.Close()
 
-			sliit_bot.RegisterChangeListener(func(h *bot.SLIITHistory) {
+			sliit_bot.RegisterChangeListener(func(h bot.SLIITHistory, uid primitive.ObjectID) {
 				log.Println(h)
+				site := bot.SLIITSite{ID: h.SiteID}
+				res := db.Collection("sites").FindOne(context.TODO(), site)
+
+				if err := res.Decode(&site); err != nil {
+					log.Panic(err)
+				}
+
+				// Handle notifications
+				kr := keyreader.NewReader(TelegramUser{}, "bson")
+
+				filter := bson.M{
+					kr.Get("SubscribedDeg"): uid,
+				}
+
+				cur, curErr := db.Collection("telegram_groups").Find(context.TODO(), filter)
+
+				if curErr != nil {
+					log.Panicln(curErr)
+				}
+
+				var subbed []TelegramUser
+
+				if err := cur.All(context.TODO(), &subbed); err != nil {
+					log.Panicln(err)
+				}
+
+				for _, sub := range subbed {
+					if err := tc.SendMessage(fmt.Sprint(sub.ChatID), h.SiteID.String()+" changed "+site.Name); err != nil {
+						log.Panic(err)
+					}
+				}
+
+				// tc.SendMessage()
 				file.Write([]byte(fmt.Sprintf("%s changed \n", h.SiteID)))
 			})
 

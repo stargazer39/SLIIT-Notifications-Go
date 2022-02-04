@@ -23,7 +23,7 @@ type SLIITBot struct {
 	exit_chan        chan bool
 	finish_chan      chan error
 	stop             bool
-	change_listeners []func(s *SLIITHistory)
+	change_listeners []func(s SLIITHistory, uid primitive.ObjectID)
 	interval         time.Duration
 }
 
@@ -31,6 +31,7 @@ type SLIITUser struct {
 	ID       primitive.ObjectID `bson:"_id" json:"id,omitempty"`
 	Username string             `bson:"username" json:"username,omitempty"`
 	Password string             `bson:"password" json:"password,omitempty"`
+	DegreeID string             `bson:"degree_id" json:"degree_id,omitempty"`
 	Disabled bool               `bson:"disabled" json:"disabled,omitempty"`
 }
 
@@ -126,7 +127,7 @@ out:
 
 				if history != nil {
 					for j := 0; j < len(s.change_listeners); j++ {
-						s.change_listeners[j](history)
+						s.change_listeners[j](*history, syn.user.ID)
 					}
 				}
 
@@ -152,7 +153,7 @@ out:
 	return nil
 }
 
-func (s *SLIITBot) RegisterChangeListener(h func(his *SLIITHistory)) {
+func (s *SLIITBot) RegisterChangeListener(h func(his SLIITHistory, uid primitive.ObjectID)) {
 	s.change_listeners = append(s.change_listeners, h)
 }
 
