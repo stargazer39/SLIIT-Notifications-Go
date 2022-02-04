@@ -314,10 +314,13 @@ func main() {
 					var t_unsent []TelegramUnsent
 
 					for _, sub := range subbed {
+
+						url := fmt.Sprintf(os.Getenv("URL_TEMPLATE"), h.ID.Hex())
+
 						msg := fmt.Sprintf("Module\n<a href='%s'>%s</a> changed.\nVisit <a href='%s'>here</a> to see what changed",
 							site.URL,
 							site.Name,
-							"https://google.com",
+							url,
 						)
 
 						if err := tc.SendHTML(fmt.Sprint(sub.ChatID), msg); err != nil {
