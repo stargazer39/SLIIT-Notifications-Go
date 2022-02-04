@@ -77,10 +77,8 @@ func (tc *TelegramClient) Start(ctx context.Context) error {
 	}
 
 	// Start long polling loop
-	// err_count := 1
 
 	last_id := int32(0)
-	// last := 0
 
 	go func() {
 	outof:
@@ -113,17 +111,6 @@ func (tc *TelegramClient) Start(ctx context.Context) error {
 			resp, err := tc.client.Do(req)
 
 			if err != nil {
-				/* if err == http.ErrHandlerTimeout {
-					continue
-				}
-
-				log.Println(err)
-				err_count++
-				if err_count < 5 {
-					time.Sleep(time.Second * 5)
-					goto retry
-				}
-				break */
 				time.Sleep(time.Second * 5)
 				goto retry
 			}
@@ -134,15 +121,11 @@ func (tc *TelegramClient) Start(ctx context.Context) error {
 				break
 			}
 
-			// log.Println(string(bytes))
-
 			var res UpdateResponse
 
 			if err := json.Unmarshal(bytes, &res); err != nil {
 				log.Println(err)
 			}
-
-			// log.Println(res)
 
 		sendloop:
 			for _, u := range res.Updates {
@@ -155,7 +138,6 @@ func (tc *TelegramClient) Start(ctx context.Context) error {
 				}
 			}
 
-			log.Println(last_id)
 			select {
 			case <-tc.close_event:
 				break outof
@@ -163,7 +145,6 @@ func (tc *TelegramClient) Start(ctx context.Context) error {
 				break outof
 			default:
 			}
-			// time.Sleep(time.Second * 5)
 		}
 		close(tc.close_event)
 	}()

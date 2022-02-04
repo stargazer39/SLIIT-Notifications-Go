@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"stargazer/SLIIT-Notifications/bot"
-	"stargazer/SLIIT-Notifications/keyreader"
 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson"
@@ -49,12 +48,11 @@ func (i *Instance) Start(ctx context.Context) error {
 
 	s.GET("/api/users", func(c *gin.Context) {
 		var users []bot.SLIITUser
-		k := keyreader.NewReader(bot.SLIITUser{}, "bson")
 
 		opts := options.Find()
 		opts.SetProjection(bson.M{
-			k.Get("ID"):       1,
-			k.Get("Username"): 1,
+			bot.SLIITUserK.Get("ID"):       1,
+			bot.SLIITUserK.Get("Username"): 1,
 		})
 
 		cur, curErr := db.Collection("user").Find(c, bson.M{}, opts)
@@ -84,10 +82,8 @@ func (i *Instance) Start(ctx context.Context) error {
 			return
 		}
 
-		k := keyreader.NewReader(bot.SLIITSite{}, "bson")
-
 		filter := bson.M{
-			k.Get("UserID"): obj,
+			bot.SLIITUserK.Get("UserID"): obj,
 		}
 
 		cur, curErr := db.Collection("sites").Find(c, filter)
@@ -125,11 +121,9 @@ func (i *Instance) Start(ctx context.Context) error {
 	s.POST("/api/sites/:id/disable", func(c *gin.Context) {
 		id := c.Param("id")
 
-		k := keyreader.NewReader(bot.SLIITSite{}, "bson")
-
 		update := bson.M{
 			"$set": bson.M{
-				k.Get("Disabled"): true,
+				bot.SLIITSiteK.Get("Disabled"): true,
 			},
 		}
 
@@ -143,7 +137,7 @@ func (i *Instance) Start(ctx context.Context) error {
 		}
 
 		filter := bson.M{
-			k.Get("ID"): obj,
+			bot.SLIITSiteK.Get("ID"): obj,
 		}
 
 		res, uErr := db.Collection("sites").UpdateOne(c, filter, update)
@@ -164,11 +158,9 @@ func (i *Instance) Start(ctx context.Context) error {
 	s.POST("/api/sites/:id/enable", func(c *gin.Context) {
 		id := c.Param("id")
 
-		k := keyreader.NewReader(bot.SLIITSite{}, "bson")
-
 		update := bson.M{
 			"$set": bson.M{
-				k.Get("Disabled"): false,
+				bot.SLIITSiteK.Get("Disabled"): false,
 			},
 		}
 		log.Println(update)
@@ -181,7 +173,7 @@ func (i *Instance) Start(ctx context.Context) error {
 		}
 
 		filter := bson.M{
-			k.Get("ID"): obj,
+			bot.SLIITSiteK.Get("ID"): obj,
 		}
 
 		res, uErr := db.Collection("sites").UpdateOne(c, filter, update)

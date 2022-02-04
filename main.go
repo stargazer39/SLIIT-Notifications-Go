@@ -30,6 +30,10 @@ type TelegramUser struct {
 	SubscribedDeg primitive.ObjectID `bson:"deg_uid,omitempty" json:"site_id"`
 }
 
+var (
+	TelegramUserK = keyreader.NewReader(TelegramUser{}, "bson")
+)
+
 func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Panicln(err)
@@ -112,8 +116,6 @@ func main() {
 	tc := telegram.NewClient(os.Getenv("TELEGRAM_BOT_TOKEN"))
 
 	// Manage Telegram client
-	kr_tu := keyreader.NewReader(TelegramUser{}, "bson")
-	kr_usr := keyreader.NewReader(bot.SLIITUser{}, "bson")
 
 	tc.IncomingUpdateListener(func(u telegram.Update) error {
 		if strings.HasPrefix(u.Message.Text, "/") {
@@ -121,7 +123,7 @@ func main() {
 			exist := false
 
 			filter := bson.M{
-				kr_tu.Get("ChatID"): u.Message.From.ID,
+				TelegramUserK.Get("ChatID"): u.Message.From.ID,
 			}
 
 			n, err := db.Collection("telegram_admin").CountDocuments(context.TODO(), filter)
@@ -195,7 +197,7 @@ func main() {
 				}
 
 				filter = bson.M{
-					kr_usr.Get("DegreeID"): command[1],
+					bot.SLIITUserK.Get("DegreeID"): command[1],
 				}
 				// Get semester with the specific id
 				res_usr := db.Collection("user").FindOne(context.TODO(), filter)
@@ -211,7 +213,7 @@ func main() {
 				}
 
 				filter := bson.M{
-					kr_tu.Get("SubscribedDeg"): user.ID,
+					TelegramUserK.Get("SubscribedDeg"): user.ID,
 				}
 				// tc.SendMessage(fmt.Sprint(u.Message.Chat.ID), "Hi")
 				n_count, err := db.Collection("telegram_groups").CountDocuments(context.TODO(), filter)
@@ -273,6 +275,7 @@ func main() {
 			sliit_bot.RegisterChangeListener(func(h bot.SLIITHistory, uid primitive.ObjectID) {
 				log.Println(h)
 				site := bot.SLIITSite{ID: h.SiteID}
+
 				res := db.Collection("sites").FindOne(context.TODO(), site)
 
 				if err := res.Decode(&site); err != nil {
@@ -280,10 +283,9 @@ func main() {
 				}
 
 				// Handle notifications
-				kr := keyreader.NewReader(TelegramUser{}, "bson")
 
 				filter := bson.M{
-					kr.Get("SubscribedDeg"): uid,
+					TelegramUserK.Get("SubscribedDeg"): uid,
 				}
 
 				cur, curErr := db.Collection("telegram_groups").Find(context.TODO(), filter)

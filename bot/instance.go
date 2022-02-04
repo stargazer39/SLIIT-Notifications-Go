@@ -31,8 +31,8 @@ type SLIITSyncable struct {
 }
 
 type Section struct {
-	Hash    string `bson:"h,omitempty" json:"h,omitempty"`
-	Section string `bson:"s,omitempty" json:"s,omitempty"`
+	Hash    string `bson:"h" json:"h,omitempty"`
+	Section string `bson:"s" json:"s,omitempty"`
 }
 
 var ErrLogin = errors.New("login error")

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"stargazer/SLIIT-Notifications/keyreader"
 	"strings"
 	"sync"
 	"time"
@@ -28,30 +29,36 @@ type SLIITBot struct {
 }
 
 type SLIITUser struct {
-	ID       primitive.ObjectID `bson:"_id,omitempty" json:"id,omitempty"`
-	Username string             `bson:"username,omitempty" json:"username,omitempty"`
-	Password string             `bson:"password,omitempty" json:"password,omitempty"`
-	DegreeID string             `bson:"degree_id,omitempty" json:"degree_id,omitempty"`
-	Disabled bool               `bson:"disabled,omitempty" json:"disabled,omitempty"`
+	ID       primitive.ObjectID `bson:"_id" json:"id,omitempty"`
+	Username string             `bson:"username" json:"username,omitempty"`
+	Password string             `bson:"password" json:"password,omitempty"`
+	DegreeID string             `bson:"degree_id" json:"degree_id,omitempty"`
+	Disabled bool               `bson:"disabled" json:"disabled,omitempty"`
 }
 
 type SLIITSite struct {
-	ID        primitive.ObjectID `bson:"_id,omitempty" json:"id,omitempty"`
-	Name      string             `bson:"name,omitempty" json:"name,omitempty"`
-	UserID    primitive.ObjectID `bson:"uid,omitempty" json:"uid,omitempty"`
-	URL       string             `bson:"url,omitempty" json:"url,omitempty"`
-	AddedTime time.Time          `bson:"added_time,omitempty" json:"added_time,omitempty"`
+	ID        primitive.ObjectID `bson:"_id" json:"id,omitempty"`
+	Name      string             `bson:"name" json:"name,omitempty"`
+	UserID    primitive.ObjectID `bson:"uid" json:"uid,omitempty"`
+	URL       string             `bson:"url" json:"url,omitempty"`
+	AddedTime time.Time          `bson:"added_time" json:"added_time,omitempty"`
 	Disabled  bool               `bson:"disabled" json:"disabled,omitempty"`
 }
 
 type SLIITHistory struct {
-	ID        primitive.ObjectID `bson:"_id,omitempty" json:"id,omitempty"`
-	SiteID    primitive.ObjectID `bson:"sid,omitempty" json:"sid,omitempty"`
-	Sections  []Section          `bson:"sects,omitempty" json:"sects,omitempty"`
-	HTML      string             `bson:"html,omitempty" json:"html,omitempty"`
-	AddedTime time.Time          `bson:"added_time,omitempty" json:"added_time,omitempty"`
-	LastID    primitive.ObjectID `bson:"last_id,omitempty" json:"last_id,omitempty"`
+	ID        primitive.ObjectID `bson:"_id" json:"id,omitempty"`
+	SiteID    primitive.ObjectID `bson:"sid" json:"sid,omitempty"`
+	Sections  []Section          `bson:"sects" json:"sects,omitempty"`
+	HTML      string             `bson:"html" json:"html,omitempty"`
+	AddedTime time.Time          `bson:"added_time" json:"added_time,omitempty"`
+	LastID    primitive.ObjectID `bson:"last_id" json:"last_id,omitempty"`
 }
+
+var (
+	SLIITUserK    = keyreader.NewReader(SLIITUser{}, "bson")
+	SLIITSiteK    = keyreader.NewReader(SLIITSite{}, "bson")
+	SLIITHistoryK = keyreader.NewReader(SLIITHistory{}, "bson")
+)
 
 func NewBot(db *mongo.Database, interval time.Duration) *SLIITBot {
 	// db.Collection("test").InsertOne(ctx, bson.M{
