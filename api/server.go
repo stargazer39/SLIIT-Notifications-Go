@@ -202,7 +202,7 @@ func (i *Instance) Start(ctx context.Context) error {
 		c.JSON(200, newSuccessResponse("success"))
 	})
 
-	s.StaticFS("/dashboard", gin.Dir("./dashboard", false))
+	s.StaticFS("/ui", gin.Dir("./ui", false))
 
 	i.server = &http.Server{
 		Addr:    ":8080",
