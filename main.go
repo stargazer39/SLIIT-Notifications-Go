@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -28,6 +29,13 @@ type TelegramUser struct {
 	ChatID        int32              `bson:"chat_id,omitempty" json:"chat_id"`
 	AddedTime     time.Time          `bson:"added_time,omitempty" json:"added_time"`
 	SubscribedDeg primitive.ObjectID `bson:"deg_uid,omitempty" json:"site_id"`
+}
+
+type TelegramUnsent struct {
+	ChatID   int32     `bson:"chat_id,omitempty" json:"chat_id"`
+	SendTime time.Time `bson:"send_time,omitempty" json:"send_time"`
+	Message  string    `bson:"message,omitempty" json:"message"`
+	Error    string    `bson:"error,omitempty" json:"error"`
 }
 
 var (
@@ -264,7 +272,7 @@ func main() {
 			sliit_bot := bot.NewBot(db, time.Second*time.Duration(interval))
 
 			// Changed log
-			file, fErr := os.Create("./.cache/log.txt")
+			file, fErr := os.OpenFile("./.cache/log.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 
 			if fErr != nil {
 				log.Panic(fErr)
@@ -274,40 +282,88 @@ func main() {
 
 			sliit_bot.RegisterChangeListener(func(h bot.SLIITHistory, uid primitive.ObjectID) {
 				log.Println(h)
-				site := bot.SLIITSite{ID: h.SiteID}
+				unsent, err := func() ([]TelegramUnsent, error) {
+					var site bot.SLIITSite
 
-				res := db.Collection("sites").FindOne(context.TODO(), site)
+					res := db.Collection("sites").FindOne(context.TODO(), bson.M{
+						bot.SLIITSiteK.Get("ID"): h.SiteID,
+					})
 
-				if err := res.Decode(&site); err != nil {
-					log.Panic(err)
-				}
+					if err := res.Decode(&site); err != nil {
+						return nil, err
+					}
 
-				// Handle notifications
+					// Handle notifications
 
-				filter := bson.M{
-					TelegramUserK.Get("SubscribedDeg"): uid,
-				}
+					filter := bson.M{
+						TelegramUserK.Get("SubscribedDeg"): uid,
+					}
 
-				cur, curErr := db.Collection("telegram_groups").Find(context.TODO(), filter)
+					cur, curErr := db.Collection("telegram_groups").Find(context.TODO(), filter)
 
-				if curErr != nil {
-					log.Panicln(curErr)
-				}
+					if curErr != nil {
+						return nil, curErr
+					}
 
-				var subbed []TelegramUser
+					var subbed []TelegramUser
 
-				if err := cur.All(context.TODO(), &subbed); err != nil {
-					log.Panicln(err)
-				}
+					if err := cur.All(context.TODO(), &subbed); err != nil {
+						return nil, err
+					}
 
-				for _, sub := range subbed {
-					if err := tc.SendMessage(fmt.Sprint(sub.ChatID), h.SiteID.String()+" changed "+site.Name); err != nil {
-						log.Panic(err)
+					var t_unsent []TelegramUnsent
+
+					for _, sub := range subbed {
+						msg := fmt.Sprintf("Module\n<a href='%s'>%s</a> changed.\nVisit <a href='%s'>here</a> to see what changed",
+							site.URL,
+							site.Name,
+							"https://google.com",
+						)
+
+						if err := tc.SendHTML(fmt.Sprint(sub.ChatID), msg); err != nil {
+							t_unsent = append(t_unsent, TelegramUnsent{ChatID: sub.ChatID, SendTime: time.Now(), Message: msg, Error: err.Error()})
+						}
+					}
+
+					if len(t_unsent) > 0 {
+						return t_unsent, fmt.Errorf("unsent message")
+					}
+
+					return nil, nil
+				}()
+
+				if err != nil {
+					log.Println(err)
+					if unsent != nil {
+						jBytes, jerr := json.Marshal(unsent)
+
+						if jerr != nil {
+							log.Panicln(jerr)
+						}
+
+						if _, err := file.Write([]byte("-------------")); err != nil {
+							log.Panicln(err)
+						}
+
+						if _, err := file.Write(jBytes); err != nil {
+							log.Panicln(err)
+						}
+
+						if _, err := file.Write([]byte("-------------")); err != nil {
+							log.Panicln(err)
+						}
+
+						generic_unsent := make([]interface{}, 0)
+
+						for _, f := range unsent {
+							generic_unsent = append(generic_unsent, f)
+						}
+
+						if _, err := db.Collection("telegram_unsent").InsertMany(context.TODO(), generic_unsent); err != nil {
+							log.Panicln(err)
+						}
 					}
 				}
-
-				// tc.SendMessage()
-				file.Write([]byte(fmt.Sprintf("%s changed \n", h.SiteID)))
 			})
 
 			// Start sliit bot

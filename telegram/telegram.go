@@ -31,7 +31,8 @@ type MessageRequest struct {
 }
 
 type MessageResponse struct {
-	OK bool `json:"ok"`
+	OK          bool   `json:"ok"`
+	Description string `json:"description"`
 }
 
 type UpdateResponse struct {
@@ -204,6 +205,56 @@ func (tc *TelegramClient) SendMessage(chat_id string, message string) error {
 
 	if !res.OK {
 		return fmt.Errorf("message to %s not sent", message)
+	}
+
+	return nil
+}
+
+func (tc *TelegramClient) SendHTML(chat_id string, message string) error {
+	m := MessageRequest{
+		ChatID:    chat_id,
+		Text:      message,
+		ParseMode: "HTML",
+	}
+
+	jBytes, bErr := json.Marshal(m)
+
+	if bErr != nil {
+		return bErr
+	}
+
+	r := bytes.NewReader(jBytes)
+
+	req, err := http.NewRequest("POST", tc.uri+"/sendMessage", r)
+
+	req.Header.Add("Accept", "application/json")
+	req.Header.Add("User-Agent", "FBI")
+	req.Header.Add("Content-Type", "application/json")
+
+	if err != nil {
+		return err
+	}
+
+	resp, err := tc.client.Do(req)
+
+	if err != nil {
+		return err
+	}
+
+	bytes, err := io.ReadAll(resp.Body)
+
+	if err != nil {
+		return err
+	}
+
+	var res MessageResponse
+
+	if err := json.Unmarshal(bytes, &res); err != nil {
+		log.Println(err)
+	}
+
+	if !res.OK {
+		return fmt.Errorf("message to %s not sent\nErr: %s", chat_id, res.Description)
 	}
 
 	return nil
