@@ -35,6 +35,11 @@ type Section struct {
 	Section string `bson:"s" json:"s,omitempty"`
 }
 
+type SyncResult struct {
+	h *SLIITHistory
+	e error
+}
+
 var ErrLogin = errors.New("login error")
 
 func NewSLIITSyncable(title string, user *SLIITUser, site string, client *http.Client, db *mongo.Database, id primitive.ObjectID) *SLIITSyncable {
@@ -48,191 +53,226 @@ func NewSLIITSyncable(title string, user *SLIITUser, site string, client *http.C
 	}
 }
 
-func (s *SLIITSyncable) Sync() (*SLIITHistory, error) {
+func (s *SLIITSyncable) Sync(ctx context.Context) (*SLIITHistory, error) {
 	log.Println(s.site)
-	doc, err := helpers.DoGetGoQuery(s.client, s.site)
+	result := make(chan SyncResult)
 
-	if err != nil {
-		return nil, err
-	}
+	go func() {
+		doc, err := helpers.DoGetGoQuery(s.client, s.site)
 
-	ok := assertLogin(doc, s.user.Username)
+		if err != nil {
+			result <- SyncResult{nil, err}
+			return
+		}
 
-	if !ok {
-		return nil, ErrLogin
-	}
+		ok := assertLogin(doc, s.user.Username)
 
-	// Get from database
-	var old_history SLIITHistory
-	k := keyreader.NewReader(old_history, "bson")
+		if !ok {
+			result <- SyncResult{nil, ErrLogin}
+			return
+		}
 
-	findOpts := options.FindOne()
-	findOpts.SetSort(bson.M{"_id": -1})
+		// Get from database
+		var old_history SLIITHistory
+		k := keyreader.NewReader(old_history, "bson")
 
-	findOpts.SetProjection(bson.M{
-		k.Get("ID"):       1,
-		k.Get("SiteID"):   1,
-		k.Get("Sections"): 1,
-	})
+		findOpts := options.FindOne()
+		findOpts.SetSort(bson.M{"_id": -1})
 
-	filter := bson.M{
-		k.Get("SiteID"): s.id,
-	}
+		findOpts.SetProjection(bson.M{
+			k.Get("ID"):       1,
+			k.Get("SiteID"):   1,
+			k.Get("Sections"): 1,
+		})
 
-	res := s.db.Collection("history").FindOne(context.TODO(), filter, findOpts)
+		filter := bson.M{
+			k.Get("SiteID"): s.id,
+		}
 
-	if err := res.Decode(&old_history); err != nil {
-		if err == mongo.ErrNoDocuments {
-			log.Printf("History dosen't exist. Adding one for %s\n", s.title)
-			var sections []Section
+		res := s.db.Collection("history").FindOne(ctx, filter, findOpts)
 
-			doc.Find(".section.main").Each(func(i int, sect *goquery.Selection) {
-				sect_name := sect.AttrOr("id", "unknown")
+		if err := res.Decode(&old_history); err != nil {
+			if err == mongo.ErrNoDocuments {
+				log.Printf("History dosen't exist. Adding one for %s\n", s.title)
+				var sections []Section
 
-				if sect_name == "unknown" {
+				doc.Find(".section.main").Each(func(i int, sect *goquery.Selection) {
+					sect_name := sect.AttrOr("id", "unknown")
+
+					if sect_name == "unknown" {
+						return
+					}
+
+					t_hash := sha256.New()
+					if _, wErr := t_hash.Write([]byte(sect.Text())); wErr != nil {
+						log.Panic(wErr)
+					}
+
+					h := fmt.Sprintf("%x", t_hash.Sum(nil))
+
+					sections = append(sections, Section{
+						Hash:    h,
+						Section: sect_name,
+					})
+				})
+
+				source, souErr := doc.Html()
+
+				if souErr != nil {
+					result <- SyncResult{nil, souErr}
 					return
 				}
 
-				t_hash := sha256.New()
-				if _, wErr := t_hash.Write([]byte(sect.Text())); wErr != nil {
-					log.Panic(wErr)
+				compressed, cErr := helpers.CompressString(source)
+
+				if cErr != nil {
+					result <- SyncResult{nil, cErr}
+					return
 				}
 
-				h := fmt.Sprintf("%x", t_hash.Sum(nil))
+				_id := primitive.NewObjectID()
 
-				sections = append(sections, Section{
-					Hash:    h,
-					Section: sect_name,
-				})
-			})
+				new_history := SLIITHistory{
+					ID:        _id,
+					SiteID:    s.id,
+					Sections:  sections,
+					HTML:      compressed,
+					AddedTime: time.Now(),
+					LastID:    _id,
+				}
 
+				if _, iErr := s.db.Collection("history").InsertOne(ctx, new_history); iErr != nil {
+					result <- SyncResult{nil, iErr}
+					return
+				}
+
+				log.Printf("Completed %s", s.id)
+
+				result <- SyncResult{nil, nil}
+				return
+			} else {
+				result <- SyncResult{nil, err}
+				return
+			}
+		}
+		// Compare the stuff
+		log.Printf("Comparing pages %s\n", s.title)
+
+		section_map := make(map[string]*Section)
+		sections := old_history.Sections
+		changed_sections := []string{}
+
+		for i := 0; i < len(sections); i++ {
+			section_map[sections[i].Section] = &sections[i]
+		}
+
+		doc.Find(".section.main").Each(func(i int, sect *goquery.Selection) {
+			sect_name := sect.AttrOr("id", "unknown")
+
+			if sect_name == "unknown" {
+				return
+			}
+
+			t_hash := sha256.New()
+			if _, wErr := t_hash.Write([]byte(sect.Text())); wErr != nil {
+				log.Panic(wErr)
+			}
+
+			h := fmt.Sprintf("%x", t_hash.Sum(nil))
+
+			if old, ok := section_map[sect_name]; ok {
+				if strings.Compare(h, old.Hash) != 0 {
+					log.Printf("%s from %s Changed.", s.id, sect_name)
+
+					changed_sections = append(changed_sections, sect_name)
+					old.Hash = h
+				}
+			}
+		})
+
+		if len(changed_sections) > 0 {
 			source, souErr := doc.Html()
 
 			if souErr != nil {
-				return nil, souErr
+				result <- SyncResult{nil, souErr}
+				return
 			}
 
 			compressed, cErr := helpers.CompressString(source)
 
 			if cErr != nil {
-				return nil, cErr
+				result <- SyncResult{nil, cErr}
+				return
 			}
 
-			_id := primitive.NewObjectID()
-
 			new_history := SLIITHistory{
-				ID:        _id,
+				ID:        primitive.NewObjectID(),
 				SiteID:    s.id,
 				Sections:  sections,
 				HTML:      compressed,
 				AddedTime: time.Now(),
-				LastID:    _id,
+				LastID:    old_history.ID,
 			}
 
-			if _, iErr := s.db.Collection("history").InsertOne(context.TODO(), new_history); iErr != nil {
-				return nil, iErr
+			if _, iErr := s.db.Collection("history").InsertOne(ctx, new_history); iErr != nil {
+				result <- SyncResult{nil, iErr}
+				return
 			}
 
-			log.Printf("Completed %s", s.id)
-
-			return nil, nil
-		} else {
-			return nil, err
+			log.Println("Completed")
+			result <- SyncResult{&new_history, nil}
+			return
 		}
+		result <- SyncResult{nil, nil}
+	}()
+
+	select {
+	case r := <-result:
+		return r.h, r.e
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
-	// Compare the stuff
-	log.Printf("Comparing pages %s\n", s.title)
+}
 
-	section_map := make(map[string]*Section)
-	sections := old_history.Sections
-	changed_sections := []string{}
+func (s *SLIITSyncable) Login(ctx context.Context) error {
+	fErr := make(chan error)
 
-	for i := 0; i < len(sections); i++ {
-		section_map[sections[i].Section] = &sections[i]
-	}
+	go func() {
+		resp, err := s.client.PostForm(
+			"https://courseweb.sliit.lk/login/index.php",
+			url.Values{
+				"username": {s.user.Username},
+				"password": {s.user.Password},
+			},
+		)
 
-	doc.Find(".section.main").Each(func(i int, sect *goquery.Selection) {
-		sect_name := sect.AttrOr("id", "unknown")
-
-		if sect_name == "unknown" {
+		if err != nil {
+			fErr <- err
 			return
 		}
 
-		t_hash := sha256.New()
-		if _, wErr := t_hash.Write([]byte(sect.Text())); wErr != nil {
-			log.Panic(wErr)
+		defer resp.Body.Close()
+
+		doc, qerr := goquery.NewDocumentFromReader(resp.Body)
+
+		if qerr != nil {
+			fErr <- qerr
+			return
 		}
 
-		h := fmt.Sprintf("%x", t_hash.Sum(nil))
+		logged := assertLogin(doc, s.user.Username)
 
-		if old, ok := section_map[sect_name]; ok {
-			if strings.Compare(h, old.Hash) != 0 {
-				log.Printf("%s from %s Changed.", s.id, sect_name)
-
-				changed_sections = append(changed_sections, sect_name)
-				old.Hash = h
-			}
+		if !logged {
+			fErr <- ErrLogin
+			return
 		}
-	})
+		fErr <- nil
+	}()
 
-	if len(changed_sections) > 0 {
-		source, souErr := doc.Html()
-
-		if souErr != nil {
-			return nil, souErr
-		}
-
-		compressed, cErr := helpers.CompressString(source)
-
-		if cErr != nil {
-			return nil, cErr
-		}
-
-		new_history := SLIITHistory{
-			ID:        primitive.NewObjectID(),
-			SiteID:    s.id,
-			Sections:  sections,
-			HTML:      compressed,
-			AddedTime: time.Now(),
-			LastID:    old_history.ID,
-		}
-
-		if _, iErr := s.db.Collection("history").InsertOne(context.TODO(), new_history); iErr != nil {
-			return nil, iErr
-		}
-
-		log.Println("Completed")
-		return &new_history, nil
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case e := <-fErr:
+		return e
 	}
-
-	return nil, nil
-}
-
-func (s *SLIITSyncable) Login() error {
-	resp, err := s.client.PostForm(
-		"https://courseweb.sliit.lk/login/index.php",
-		url.Values{
-			"username": {s.user.Username},
-			"password": {s.user.Password},
-		},
-	)
-
-	if err != nil {
-		return err
-	}
-
-	defer resp.Body.Close()
-
-	doc, qerr := goquery.NewDocumentFromReader(resp.Body)
-
-	if qerr != nil {
-		return qerr
-	}
-
-	logged := assertLogin(doc, s.user.Username)
-
-	if !logged {
-		return ErrLogin
-	}
-	return nil
 }

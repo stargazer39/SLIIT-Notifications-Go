@@ -114,20 +114,24 @@ out:
 			wg.Add(1)
 
 			go func() {
-				history, sErr := syn.Sync()
+				syn_context, cancel_syn_context := context.WithTimeout(ctx, time.Second*30)
+
+				defer cancel_syn_context()
+
+				history, sErr := syn.Sync(syn_context)
 
 				if sErr != nil {
 					if sErr == ErrLogin {
-						rErr := syn.Login()
+						rErr := syn.Login(syn_context)
 						if rErr == ErrLogin {
 							log.Println("ReLogin faild.", rErr)
-							return
+							goto threadDone
 						}
 
 						if rErr != nil {
 							log.Println(rErr)
 						}
-						return
+						goto threadDone
 					}
 					log.Println(sErr)
 				}
@@ -137,7 +141,7 @@ out:
 						s.change_listeners[j](*history, syn.user.ID)
 					}
 				}
-
+			threadDone:
 				wg.Done()
 				<-done
 			}()

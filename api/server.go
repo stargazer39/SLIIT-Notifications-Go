@@ -22,8 +22,9 @@ type Instance struct {
 }
 
 type StateResponse struct {
-	Message string `json:"message"`
-	Error   bool   `json:"error"`
+	Message string      `json:"message"`
+	Error   bool        `json:"error"`
+	Data    interface{} `json:"data,omitempty"`
 }
 
 type UsersResponse struct {
@@ -202,6 +203,37 @@ func (i *Instance) Start(ctx context.Context) error {
 			i.restart_bot()
 
 			c.JSON(200, newSuccessResponse("success"))
+		})
+
+		api.GET("/history/:id", func(c *gin.Context) {
+			id := c.Param("id")
+
+			obj, err := primitive.ObjectIDFromHex(id)
+
+			if err != nil {
+				c.AbortWithStatusJSON(400, newErrorResponse(err))
+				return
+			}
+
+			filter := bson.M{
+				bot.SLIITHistoryK.Get("ID"): obj,
+			}
+
+			res := db.Collection("history").FindOne(c, filter)
+
+			var history bot.SLIITHistory
+
+			if err := res.Decode(&history); err != nil {
+				c.AbortWithStatusJSON(400, newErrorResponse(err))
+				return
+			}
+
+			c.JSON(200, StateResponse{
+				Error:   false,
+				Message: "success",
+				Data:    history,
+			})
+
 		})
 	}
 
