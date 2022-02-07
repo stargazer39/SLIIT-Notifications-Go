@@ -160,7 +160,7 @@ func (s *SLIITSyncable) Sync(ctx context.Context) (*SLIITHistory, error) {
 
 		section_map := make(map[string]*Section)
 		sections := old_history.Sections
-		changed_sections := []string{}
+		changed_sections := 0
 
 		for i := 0; i < len(sections); i++ {
 			section_map[sections[i].Section] = &sections[i]
@@ -184,13 +184,15 @@ func (s *SLIITSyncable) Sync(ctx context.Context) (*SLIITHistory, error) {
 				if strings.Compare(h, old.Hash) != 0 {
 					log.Printf("%s from %s Changed.", s.id, sect_name)
 
-					changed_sections = append(changed_sections, sect_name)
+					changed_sections++
 					old.Hash = h
 				}
+			} else {
+				sections = append(sections, Section{Hash: h, Section: sect_name})
 			}
 		})
 
-		if len(changed_sections) > 0 {
+		if changed_sections > 0 {
 			source, souErr := doc.Html()
 
 			if souErr != nil {
