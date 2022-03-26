@@ -1,10 +1,11 @@
 import Login from "../Login/Login";
+import Admin from "../Admin/Admin";
 import { Container } from "./styles";
 
 function Home(){
     return (
         <Container>
-            <Login />
+            This is HOME
         </Container>
     )
 }

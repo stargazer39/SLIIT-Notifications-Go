@@ -1,12 +1,33 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
 import './index.css';
-import Home from "./routes/Home/Home"
 import reportWebVitals from './reportWebVitals';
+import App from './App';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import Home from './routes/Home/Home';
+import Admin from './routes/Admin/Admin';
+import Dashboard from './routes/Dashboard/Dashboard';
+import Login from './routes/Login/Login';
+import DashHome from './routes/Dashboard/DashHome';
+import SiteManager from './routes/Dashboard/SiteManager';
 
 ReactDOM.render(
   <React.StrictMode>
-    <Home />
+    <BrowserRouter>
+        <Routes>
+          <Route path="/*" element={<App />}>
+           <Route index element={<Home />} />
+           <Route path="admin" element={<Admin />}>
+             <Route path="dashboard" element={<Dashboard />}>
+               <Route index element={<DashHome />}/>
+               <Route path="sites" element={<SiteManager />}/>
+            </Route>
+             <Route path="login" element={<Login />} />
+           </Route>
+           <Route path='*' element={<Navigate replace to="admin/login" />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
   </React.StrictMode>,
   document.getElementById('root')
 );
