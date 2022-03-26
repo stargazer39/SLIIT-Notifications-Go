@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -47,27 +48,9 @@ func main() {
 		log.Panicln(err)
 	}
 
-	/* Test code start */
-	/* t := telegram.NewClient(os.Getenv("TELEGRAM_BOT_TOKEN"))
+	api_only := flag.Bool("api-only", false, "Serve the api only")
 
-	t.IncomingUpdateListener(func(u telegram.Update) error {
-		log.Println(u.Message.Text)
-		e := t.SendMessage(fmt.Sprint(u.Message.From.ID), "Hello "+u.Message.Text)
-		log.Println(e)
-		return nil
-	})
-
-	ctx, cancel := context.WithCancel(context.Background())
-
-	defer cancel()
-
-	if err := t.Start(ctx); err != nil {
-		log.Panic(err)
-	}
-
-	return */
-	/* Test code end */
-
+	flag.Parse()
 	// Handle exit
 	proc_exit_event := make(chan os.Signal, 1)
 	signal.Notify(proc_exit_event, os.Interrupt)
@@ -112,13 +95,23 @@ func main() {
 	}
 
 	// Start API
-	a := api.NewInstance(db)
 	go func() {
-		if err := a.Start(main_ctx); err != nil {
+		if err := api.Start(db, main_ctx); err != nil {
 			log.Println(err)
 		}
 	}()
 
+	if *api_only {
+		<-proc_exit_event
+		ctx, cancel := context.WithTimeout(main_ctx, time.Second*10)
+
+		defer cancel()
+		if err := api.Stop(ctx); err != nil {
+			log.Println(err)
+		}
+
+		return
+	}
 	// Start Telegram client
 	// New telegram client
 	tc := telegram.NewClient(os.Getenv("TELEGRAM_BOT_TOKEN"))
@@ -419,7 +412,7 @@ func main() {
 	}()
 
 	// Register Restarter
-	a.RegisterBotRestarter(func() {
+	api.RegisterBotRestarter(func() {
 		restart_event <- true
 	})
 
@@ -435,7 +428,7 @@ func main() {
 
 	// Stop the API
 	log.Println("Stopping the API")
-	if err := a.Stop(timeout_ctx); err != nil {
+	if err := api.Stop(timeout_ctx); err != nil {
 		log.Println(err)
 	}
 
