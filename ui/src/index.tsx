@@ -4,12 +4,16 @@ import './index.css';
 import reportWebVitals from './reportWebVitals';
 import App from './App';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import Home from './routes/Home/Home';
-import Admin from './routes/Admin/Admin';
-import Dashboard from './routes/Dashboard/Dashboard';
-import Login from './routes/Login/Login';
-import DashHome from './routes/Dashboard/DashHome';
-import SiteManager from './routes/Dashboard/SiteManager';
+import Home from './components/Home/Home';
+import Admin from './components/Admin/Admin';
+import Dashboard from './components/Dashboard/Dashboard';
+import Login from './components/Login/Login';
+import DashHome from './components/DashHome/DashHome';
+import SiteManager from './components/SiteManager/SiteManager';
+import UserManager from './components/UserManager/UserManager';
+
+import "bootstrap/dist/css/bootstrap.min.css";
+import History from './components/History/History';
 
 ReactDOM.render(
   <React.StrictMode>
@@ -17,13 +21,15 @@ ReactDOM.render(
         <Routes>
           <Route path="/*" element={<App />}>
            <Route index element={<Home />} />
-           <Route path="admin" element={<Admin />}>
-             <Route path="dashboard" element={<Dashboard />}>
-               <Route index element={<DashHome />}/>
-               <Route path="sites" element={<SiteManager />}/>
-            </Route>
+            <Route path="admin" element={<Admin />}>
+              <Route path="dashboard" element={<Dashboard />}>
+                <Route index element={<DashHome />}/>
+                <Route path="sites" element={<SiteManager />}/>
+                <Route path="users" element={<UserManager />}/>
+              </Route>
              <Route path="login" element={<Login />} />
            </Route>
+           <Route path="history/:id" element={<History />} />
            <Route path='*' element={<Navigate replace to="admin/login" />} />
           </Route>
         </Routes>
